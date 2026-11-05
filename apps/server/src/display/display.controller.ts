@@ -4,6 +4,7 @@ import { DisplayService } from './display.service.js';
 import { adminPage, homeAdminPage, tvPage } from './pages.js';
 import { PARTY_CLIENT_JS } from '../party/party-client.js';
 import { LIVE_CLIENT_JS } from '../live/live-client.js';
+import { publicGuestOrigin } from './guest-origin.js';
 @Controller()
 export class DisplayController {
   constructor(private readonly display:DisplayService){}
@@ -35,10 +36,12 @@ export class DisplayController {
     if(!/^(?:[\da-zA-Z.-]+)(?::\d{1,5})?$/.test(host))throw new Error('Invalid request host');
     const snapshot = await this.display.snapshot(id); // validates UUID and game existence
     const game = snapshot.game as {joinCode:string};
-    return QRCode.toString('http://'+host+'/g/'+encodeURIComponent(game.joinCode),
+    return QRCode.toString((publicGuestOrigin() ?? ('http://'+host))+'/g/'+encodeURIComponent(game.joinCode),
       {type:'svg',margin:2,width:280,errorCorrectionLevel:'M'});
   }
   @Get('games/:gameId/display') snapshot(@Param('gameId') id:string){return this.display.snapshot(id);}
+  @Get('games/:gameId/guest-display')
+  guestSnapshot(@Param('gameId') id:string){return this.display.guestSnapshot(id);}
   @Get('games/:gameId/admin/players/:playerId/ticket')
   ticket(@Param('gameId') id:string,@Param('playerId') playerId:string,@Headers('x-admin-key') key?:string){return this.display.adminTicket(id,playerId,key);}
 }

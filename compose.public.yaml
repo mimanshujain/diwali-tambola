@@ -1,0 +1,34 @@
+# Opt-in public GUEST deployment. Run together with compose.yaml.
+# Never expose API port 3000 via a tunnel public hostname.
+services:
+  api:
+    environment:
+      PUBLIC_GUEST_ORIGIN: ${PUBLIC_GUEST_ORIGIN:?Set PUBLIC_GUEST_ORIGIN to https://play.yourdomain.com in .env}
+
+  guest-gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./deploy/guest-gateway.nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - default
+      - guest_edge
+    # No ports: this gateway is only reachable inside Docker.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env before launching public tunnel}
+    depends_on:
+      - guest-gateway
+    networks:
+      - guest_edge
+    # Tunnel has no network route to api/db; only to guest-gateway.
+
+networks:
+  guest_edge: {}
