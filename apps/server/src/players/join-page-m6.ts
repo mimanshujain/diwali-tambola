@@ -59,7 +59,7 @@ async function refresh(){try{const [display,power]=await Promise.all([
  $('#powerSubmit').disabled=power.status!=='AVAILABLE'||display.game.status!=='RUNNING'||!ticket||ticket.status!=='SUBMITTED';}
 }catch(e){msg('Connection: '+e.message);}}
 if(token){req('/players/me').then(show).then(refresh).catch(e=>msg(e.message+' · Contact the admin if your registration cannot be restored.'));}
-refresh();setInterval(refresh,3500);
+refresh();setInterval(refresh,30000);window.addEventListener('tambola:changed',refresh);
 })();
-</script></body></html>`;
+</script><script src="/socket.io/socket.io.js"></script><script src="/live/client.js"></script></body></html>`;
 }

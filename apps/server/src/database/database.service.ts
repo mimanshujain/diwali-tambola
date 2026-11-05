@@ -5,6 +5,7 @@ import { MILESTONE_3_MIGRATION } from './migrations/002_players.js';
 import { MILESTONE_4_MIGRATION } from './migrations/003_winner_engine.js';
 import { MILESTONE_4B_MIGRATION } from './migrations/004_sudden_death.js';
 import { MILESTONE_5_MIGRATION } from './migrations/005_power.js';
+import { MILESTONE_7_MIGRATION } from './migrations/006_live_updates.js';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
@@ -119,6 +120,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       if (m5.rowCount === 0) {
         await client.query(MILESTONE_5_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['005_power']);
+      }
+      const m7 = await client.query('SELECT migration_id FROM schema_migrations WHERE migration_id=$1', ['006_live_updates']);
+      if (m7.rowCount === 0) {
+        await client.query(MILESTONE_7_MIGRATION);
+        await client.query('INSERT INTO schema_migrations (migration_id) VALUES ($1)', ['006_live_updates']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');
