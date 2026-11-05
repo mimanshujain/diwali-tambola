@@ -99,3 +99,7 @@ Prize eligibility, player claims, admin review, shared-prize settlement. See doc
 
 ## Milestone 4B
 Sudden-death mini-rounds and Second Full House. See docs/MILESTONE_4B.md.
+
+## Milestones 5 and 6
+
+Lucky Strike, the TV screen, player UI, and admin UI are documented in [docs/MILESTONE_5_6.md](docs/MILESTONE_5_6.md).
