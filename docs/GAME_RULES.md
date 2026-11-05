@@ -1,33 +1,29 @@
-# Tambola engine rules (Milestone 2)
+# Game rules and prize adjudication
 
-## Ticket layout
+## Standard Tambola
 
-A ticket is a 3-row x 9-column grid with exactly 15 numbers. Every row has exactly five numbers. Every column has one to three numbers and uses its fixed range:
+Tickets contain 15 numbers in a 3-row by 9-column grid. The caller draws numbers 1–90 without repetition. A submitted ticket is immutable unless an admin explicitly reissues it.
 
-| Column | Range |
-|---:|---:|
-| 1 | 1-9 |
-| 2 | 10-19 |
-| 3 | 20-29 |
-| 4 | 30-39 |
-| 5 | 40-49 |
-| 6 | 50-59 |
-| 7 | 60-69 |
-| 8 | 70-79 |
-| 9 | 80-90 |
+## Prize categories
 
-Numbers increase from top to bottom within a column. Empty cells are represented as JSON `null`. Generation uses `node:crypto` secure random integers and is validated before storage.
+| Category | Qualifying condition |
+|---|---|
+| Early Five | Five ticket numbers called |
+| Four Corners | First and last occupied positions in the top and bottom rows called |
+| Top / Middle / Bottom Line | Every occupied number in that row called |
+| Full House | All 15 ticket numbers called |
+| Second Full House | Full-house eligibility excluding the actual first-house winner(s) |
 
-## Number draw
+A tied category normally shares the prize unless configured for sudden death. **Sudden-death losers remain eligible for Second Full House** under the implemented rule; only actual first-house winners are excluded.
 
-Each game receives a cryptographically shuffled permutation of 1-90 at creation. The remaining order is persisted in PostgreSQL. A call transaction locks the game row, removes exactly one number, appends one `called_numbers` row, increments the sequence, and advances the next-call deadline. A game-level row lock serializes scheduler and manual calls.
+## Sudden death
 
-Manual calls must be between 1 and 90 and must not have been called already. A successful manual call resets the interval timer.
+When enabled for a category, tied contenders receive a mini-ticket (default five numbers). The mini-round has its own draw sequence (default every ten seconds). Contenders finishing on the same draw share the result. Admins can start, pause and resume rounds. Persistent state is intended to support restart recovery; verify this with a rehearsal.
 
-## Scheduling and recovery
+## Lucky Strike
 
-The database `next_call_at` timestamp is the runtime scheduling authority. The API checks for due calls once per second. It checkpoints the seconds remaining every five seconds. On graceful shutdown the game is paused with the current remaining delay. After an ungraceful restart, the game is also restored as PAUSED using the last checkpoint (at most about five seconds of timer drift); downtime is not counted as game time. An admin must resume the game.
+A player may request one uncalled number as a one-time superpower. The admin may approve or reject. On approval, the number is called through the game engine. When that call qualifies the power user for a prize, other eligible players receive the configured priority window (implemented default: 30 seconds). Test the exact eligibility/claim handling before the party.
 
-## Current boundary
+## Operational policy
 
-Tickets are persisted as AVAILABLE but are not yet assigned to players. Player identity, submission/immutability, winning categories, claims, tie-breaks, superpower, and admin authentication are later milestones. Keep this API on a trusted LAN and do not expose it to the internet.
+Define prizes and tie-sharing rules before starting. Resolve disputed claims against the persisted call sequence and server-calculated eligibility, not handwritten markings alone.
