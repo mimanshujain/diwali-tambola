@@ -1,29 +1,31 @@
-# Architecture (initial baseline)
+# Architecture (Milestone 2)
 
 ## Deployment
 
 The Raspberry Pi is the single local host. Docker Compose runs the API and PostgreSQL. The TV and mobile browsers will connect to the Pi over the same trusted LAN.
 
-## Initial components
+## Components
 
-- `apps/server`: NestJS HTTP API, TypeScript, PostgreSQL connectivity.
+- `apps/server`: NestJS HTTP API and game services, written in TypeScript.
+- `apps/server/src/tambola/domain`: side-effect-free ticket and number-sequence logic.
+- `apps/server/src/database`: PostgreSQL pool, transaction helper, and versioned SQL migrations.
 - `db`: PostgreSQL container with a named persistent volume.
-- `compose.yaml`: local deployment and health dependencies.
+- `compose.yaml`: ARM64-compatible local deployment.
 
-## Design principles
+## Persistence and concurrency
 
-1. PostgreSQL is the authoritative durable state store.
-2. The API owns all game state transitions; browser clients never write directly to the database.
-3. Real-time events (to be added) are notifications. Reconnected clients must be able to reload authoritative state from the API.
-4. Number calls, pause/resume, claims, and prize resolution will be transactional and audited.
-5. The game must recover from a process/container restart using persisted state rather than an in-memory timer.
-6. The Pi is reachable only on a trusted LAN; no public port forwarding is required.
+PostgreSQL is the source of truth. The shuffled remaining-number permutation is stored on each game. Each number call runs in a transaction and locks its game row with `SELECT ... FOR UPDATE`. That serializes scheduled calls and admin manual calls, preventing duplicate numbers and duplicate sequence positions. Called numbers are separately persisted with sequence, source, and timestamp.
 
-## Health endpoints
+Database migrations are tracked in `schema_migrations` and applied by the API at startup. The existing `pg` driver is retained instead of adding an ORM to the critical call path; explicit SQL makes the locking and transaction boundaries visible. The migration boundary remains independent of the application services.
 
-- `GET /health/live`: process liveness.
-- `GET /health/ready`: API-to-PostgreSQL readiness.
+## Scheduler and restart recovery
 
-## Next architecture increment
+`next_call_at` is the timer's durable deadline while a game is RUNNING. The scheduler checks for due games every second and checkpoints remaining delay every five seconds. A graceful shutdown pauses active games using the current remaining delay. After an ungraceful restart, active games are restored as PAUSED using the last checkpoint, so downtime is not counted as playing time (up to approximately five seconds of checkpoint drift). An admin must explicitly resume.
 
-Add Prisma schema and migrations, shared domain types, and the deterministic Tambola ticket/number engine. Keep the database as the source of truth.
+## Ticket rules
+
+Tickets are generated with cryptographic random integers. A validator enforces 3x9 shape, 15 unique numbers, five numbers per row, one to three numbers per column, valid column ranges, and ascending vertical order. Tickets are persisted as AVAILABLE until a later milestone associates them with a player.
+
+## Security boundary
+
+M2 routes do not yet implement authentication. Keep port 3000 on a trusted local network and do not forward it from the internet. Admin/player authentication is a required later milestone before broader deployment.
