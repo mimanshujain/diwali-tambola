@@ -109,6 +109,8 @@ export class TambolaService {
       if (game.status !== 'CREATED' && game.status !== 'PAUSED') {
         throw new ConflictException(`Cannot start a game in ${game.status} state.`);
       }
+      const tieBreak = await client.query('SELECT 1 FROM sudden_death_rounds WHERE game_id=$1 AND status<>$2 LIMIT 1',[gameId,'RESOLVED']);
+      if(tieBreak.rowCount) throw new ConflictException('Finish the sudden-death round before starting the main game.');
       if (game.remaining_numbers.length === 0) {
         throw new ConflictException('This game has no numbers remaining.');
       }
