@@ -3,9 +3,10 @@ import { DatabaseModule } from './database/database.module.js';
 import { HealthController } from './health.controller.js';
 import { TambolaModule } from './tambola/tambola.module.js';
 import { PlayersModule } from './players/players.module.js';
+import { WinnersModule } from './winners/winners.module.js';
 
 @Module({
-  imports: [DatabaseModule, TambolaModule, PlayersModule],
+  imports: [DatabaseModule, TambolaModule, PlayersModule, WinnersModule],
   controllers: [HealthController],
 })
 export class AppModule {}
