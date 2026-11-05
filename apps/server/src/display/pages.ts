@@ -22,7 +22,7 @@ header{display:flex;justify-content:space-between;align-items:center;gap:12px;pa
 @media print{header,.no-print{display:none!important}body{color:#000;background:#fff}.panel{border:0;background:#fff;color:#000}}
 `;
 function html(title:string,body:string,js:string):string{
-  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title><style>'+styles+'</style></head><body>'+body+'<script>'+js+'</script></body></html>';
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title><style>'+styles+'</style></head><body>'+body+'<script>'+js+'</script><script src="/socket.io/socket.io.js"></script><script src="/live/client.js"></script></body></html>';
 }
 export function tvPage(_gameId:string):string{
   return html('Diwali Tambola · TV',String.raw`
@@ -56,7 +56,7 @@ async function refresh(){try{
 function clock(){if(!game)return;if(game.status!=='RUNNING'||!game.nextCallAt){$('#countdown').textContent=game.status==='PAUSED'?'PAUSED':'—';return;}
  const left=Math.max(0,Math.ceil((new Date(game.nextCallAt).getTime()-Date.now())/1000));
  $('#countdown').textContent=String(Math.floor(left/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0');}
-refresh();setInterval(refresh,2500);setInterval(clock,300);
+refresh();setInterval(refresh,30000);window.addEventListener('tambola:changed',refresh);setInterval(clock,300);
 })();`);
 }
 export function homeAdminPage():string{
@@ -138,6 +138,6 @@ async function refresh(){try{
  {label:'Start/resume',action:()=>action('/admin/categories/'+cat.id+'/sudden-death/start')},
  {label:'Pause',action:()=>action('/admin/categories/'+cat.id+'/sudden-death/pause')}]);}
 }catch(e){say(e.message);}}
-refresh();setInterval(refresh,4500);
+refresh();setInterval(refresh,30000);window.addEventListener('tambola:changed',refresh);
 })();`);
 }
