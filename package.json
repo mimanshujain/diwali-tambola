@@ -1,16 +1,13 @@
 {
   "name": "diwali-tambola",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Local-network Tambola game for Diwali gatherings",
-  "workspaces": [
-    "apps/server"
-  ],
-  "engines": {
-    "node": ">=26 <27"
-  },
+  "workspaces": ["apps/server"],
+  "engines": { "node": ">=26 <27" },
   "scripts": {
     "build": "npm run build --workspace @diwali-tambola/server",
-    "typecheck": "npm run typecheck --workspace @diwali-tambola/server"
+    "typecheck": "npm run typecheck --workspace @diwali-tambola/server",
+    "test": "npm run test --workspace @diwali-tambola/server"
   }
 }
