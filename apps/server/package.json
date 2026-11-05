@@ -1,13 +1,14 @@
 {
   "name": "@diwali-tambola/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start:prod": "node dist/main.js",
     "start:dev": "tsx watch src/main.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test src/tambola/domain/*.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.3",
