@@ -91,3 +91,7 @@ Tickets are saved as AVAILABLE and are not yet attached to players. Registration
 
 ## Milestone 3
 Guest registration, mobile/device duplicate controls, private player tickets, draft submission, and audited admin reissue. See `docs/MILESTONE_3.md`.
+
+
+## Milestone 4A
+Prize eligibility, player claims, admin review, shared-prize settlement. See docs/MILESTONE_4.md.

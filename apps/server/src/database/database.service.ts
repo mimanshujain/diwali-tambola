@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 import { MILESTONE_2_MIGRATION } from './migrations/001_game_engine.js';
 import { MILESTONE_3_MIGRATION } from './migrations/002_players.js';
+import { MILESTONE_4_MIGRATION } from './migrations/003_winner_engine.js';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
@@ -101,6 +102,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       if (m3.rowCount === 0) {
         await client.query(MILESTONE_3_MIGRATION);
         await client.query('INSERT INTO schema_migrations (migration_id) VALUES ($1)', ['002_players']);
+      }
+      const m4 = await client.query('SELECT migration_id FROM schema_migrations WHERE migration_id=$1', ['003_winner_engine']);
+      if (m4.rowCount === 0) {
+        await client.query(MILESTONE_4_MIGRATION);
+        await client.query('INSERT INTO schema_migrations (migration_id) VALUES ($1)', ['003_winner_engine']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');
