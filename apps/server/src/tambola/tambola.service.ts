@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { generateJoinCode } from './domain/join-code.js';
 import type { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { createShuffledNumbers } from './domain/draw-sequence.js';
@@ -16,6 +17,7 @@ export type CallSource = 'SCHEDULED' | 'MANUAL' | 'SUPERPOWER';
 
 interface GameRow extends QueryResultRow {
   id: string;
+  join_code: string;
   name: string;
   status: GameStatus;
   interval_seconds: number;
@@ -60,11 +62,25 @@ export class TambolaService {
     }
 
     const id = randomUUID();
-    await this.database.query(
-      `INSERT INTO games (id, name, interval_seconds, remaining_numbers)
-       VALUES ($1::uuid, $2, $3, $4::smallint[])`,
-      [id, name, intervalSeconds, createShuffledNumbers()],
-    );
+    const remainingNumbers = createShuffledNumbers();
+    // A DB uniqueness constraint arbitrates collisions, including concurrent game creation.
+    let created = false;
+    for (let attempt = 0; attempt < 16; attempt++) {
+      try {
+        await this.database.query(
+          `INSERT INTO games (id, name, interval_seconds, remaining_numbers, join_code)
+           VALUES ($1::uuid, $2, $3, $4::smallint[], $5)`,
+          [id, name, intervalSeconds, remainingNumbers, generateJoinCode()],
+        );
+        created = true;
+        break;
+      } catch (error) {
+        // 23505 is PostgreSQL unique_violation; only retry collisions on the code index.
+        const pg = error as { code?: string; constraint?: string };
+        if (pg.code !== '23505' || pg.constraint !== 'games_join_code_uq') throw error;
+      }
+    }
+    if (!created) throw new ConflictException('Could not allocate a unique game code. Please retry.');
     await this.database.query(`INSERT INTO winning_categories(id,game_id,rule_type,name)
       SELECT gen_random_uuid(),$1,rule_type,name FROM (VALUES
       ('EARLY_FIVE','Early Five'),('FOUR_CORNERS','Four Corners'),('TOP_LINE','Top Line'),
@@ -76,7 +92,7 @@ export class TambolaService {
   async getGame(gameId: string): Promise<Record<string, unknown>> {
     this.assertUuid(gameId);
     const result = await this.database.query<GameRow & { remaining_count: number }>(
-      `SELECT id, name, status, interval_seconds, next_number_sequence,
+      `SELECT id, join_code, name, status, interval_seconds, next_number_sequence,
               next_ticket_number, next_call_at, paused_remaining_seconds,
               created_at, started_at, completed_at,
               cardinality(remaining_numbers)::integer AS remaining_count
@@ -89,6 +105,7 @@ export class TambolaService {
     const calledCount = game.next_number_sequence - 1;
     return {
       id: game.id,
+      joinCode: game.join_code,
       name: game.name,
       status: game.status,
       intervalSeconds: game.interval_seconds,
