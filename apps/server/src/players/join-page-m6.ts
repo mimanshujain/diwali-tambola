@@ -46,7 +46,7 @@ $('#submit').onclick=async()=>{try{show(await req('/players/me/submit','POST'));
 $('#regenerate').onclick=async()=>{try{show(await req('/players/me/regenerate','POST'));await refresh();}catch(e){msg(e.message);}};
 $('#powerForm').onsubmit=async e=>{e.preventDefault();try{const n=Number($('#powerNumber').value);const r=await req('/players/me/power/request','POST',{number:n});msg('Requested '+r.number+' — waiting for admin approval');await refresh();}catch(err){msg(err.message);}};
 async function refresh(){try{const [display,power]=await Promise.all([
- req('/display'),token?req('/players/me/power'):Promise.resolve(null)]);const cat=display.categories;
+ req('/guest-display'),token?req('/players/me/power'):Promise.resolve(null)]);const cat=display.categories;
  $('#gameName').textContent=display.game.name;$('#gameStatus').textContent=display.game.status;
  if(ticket)$('#regenerate').hidden=ticket.status==='SUBMITTED'||display.game.status!=='CREATED';
  called=new Set(display.calls.map(x=>x.number));renderTicket();
