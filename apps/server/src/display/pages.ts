@@ -46,7 +46,7 @@ function fill(container,rows,make){container.replaceChildren();if(!rows.length){
 async function refresh(){try{
  const r=await fetch('/games/'+encodeURIComponent(id)+'/display',{cache:'no-store'});if(!r.ok)throw Error('Game '+r.status);const s=await r.json();game=s.game;
  $('#gameName').textContent=game.name;$('#status').textContent=game.status;$('#count').textContent=String(s.calls.length);
- $('#joinCode').textContent=game.joinCode;$('#joinUrl').textContent=location.origin+'/g/'+game.joinCode;
+ $('#joinCode').textContent=game.joinCode;$('#joinUrl').textContent=(s.guestOrigin||location.origin)+'/g/'+game.joinCode;
  const last=s.calls.length?s.calls[s.calls.length-1]:null;$('#latest').textContent=last?last.number:'—';
  const seen=new Set(s.calls.map(x=>x.number));for(let n=1;n<=90;n++){const el=$('#n'+n);el.className='ball'+(seen.has(n)?' hit':'')+(last&&last.number===n?' latest':'');}
  $('#playerCount').textContent=String(s.players.length);fill($('#players'),s.players,x=>x.name+(x.submitted?' ✓':' · reviewing'));
@@ -117,7 +117,7 @@ w.focus();setTimeout(()=>w.print(),300);
 async function refresh(){try{
  display=await req('/display','GET',undefined,false);
  $('#name').textContent=display.game.name;$('#status').textContent=display.game.status;
- $('#joinLink').href='/g/'+encodeURIComponent(display.game.joinCode);
+ $('#joinLink').href=(display.guestOrigin||location.origin)+'/g/'+encodeURIComponent(display.game.joinCode);
  const last=display.calls.at(-1);$('#latest').textContent='Last number: '+(last?last.number:'—');
  $('#timer').textContent=display.game.nextCallAt?'Next: '+new Date(display.game.nextCallAt).toLocaleTimeString():'';
  $('#winners').replaceChildren();display.winners.forEach(x=>line($('#winners'),x.category_name+' · '+x.name));
