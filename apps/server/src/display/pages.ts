@@ -32,7 +32,7 @@ export function tvPage(_gameId:string):string{
 <div class="panel"><h2>Numbers called</h2><div id="board" class="board"></div><p class="small">New calls are highlighted automatically.</p></div>
 <div class="panel"><h2>Prize board</h2><div id="winners"><span class="muted">No winners announced yet.</span></div></div>
 </main><aside>
-<div class="panel"><h2>Join the game</h2><img id="qr" class="qr" alt="QR code to join Tambola"><p class="small" style="overflow-wrap:anywhere;text-align:center" id="joinUrl"></p></div>
+<div class="panel"><h2>Join the game</h2><img id="qr" class="qr" alt="QR code to join Tambola"><div style="text-align:center;margin:14px 0"><div class="small">GAME CODE</div><div id="joinCode" style="font-size:clamp(28px,3.6vw,54px);letter-spacing:.14em;font-weight:900;color:#ffd28a">------</div></div><p class="small" style="overflow-wrap:anywhere;text-align:center" id="joinUrl"></p></div>
 <div class="panel"><h2>Players <span id="playerCount" class="pill">0</span></h2><div id="players"></div></div>
 <div class="panel"><h2>✨ Lucky Strikes</h2><div id="powers" class="small">No Lucky Strikes yet</div></div>
 <div class="panel"><h2>Sudden Death</h2><div id="rounds" class="small">No tie-break round</div></div>
@@ -40,12 +40,13 @@ export function tvPage(_gameId:string):string{
 (function(){
 const id=location.pathname.split('/').pop();const $=s=>document.querySelector(s);let game=null;
 $('#qr').src='/tv/'+encodeURIComponent(id)+'/qr.svg';
-$('#joinUrl').textContent=location.origin+'/join/'+id;
+$('#joinUrl').textContent='Loading game code…';
 const board=$('#board');for(let n=1;n<=90;n++){const el=document.createElement('div');el.className='ball';el.id='n'+n;el.textContent=String(n);board.appendChild(el);}
 function fill(container,rows,make){container.replaceChildren();if(!rows.length){container.textContent='—';return;}rows.forEach(r=>{const el=document.createElement('div');el.className='item';el.textContent=make(r);container.appendChild(el);});}
 async function refresh(){try{
  const r=await fetch('/games/'+encodeURIComponent(id)+'/display',{cache:'no-store'});if(!r.ok)throw Error('Game '+r.status);const s=await r.json();game=s.game;
  $('#gameName').textContent=game.name;$('#status').textContent=game.status;$('#count').textContent=String(s.calls.length);
+ $('#joinCode').textContent=game.joinCode;$('#joinUrl').textContent=location.origin+'/g/'+game.joinCode;
  const last=s.calls.length?s.calls[s.calls.length-1]:null;$('#latest').textContent=last?last.number:'—';
  const seen=new Set(s.calls.map(x=>x.number));for(let n=1;n<=90;n++){const el=$('#n'+n);el.className='ball'+(seen.has(n)?' hit':'')+(last&&last.number===n?' latest':'');}
  $('#playerCount').textContent=String(s.players.length);fill($('#players'),s.players,x=>x.name+(x.submitted?' ✓':' · reviewing'));
@@ -116,6 +117,7 @@ w.focus();setTimeout(()=>w.print(),300);
 async function refresh(){try{
  display=await req('/display','GET',undefined,false);
  $('#name').textContent=display.game.name;$('#status').textContent=display.game.status;
+ $('#joinLink').href='/g/'+encodeURIComponent(display.game.joinCode);
  const last=display.calls.at(-1);$('#latest').textContent='Last number: '+(last?last.number:'—');
  $('#timer').textContent=display.game.nextCallAt?'Next: '+new Date(display.game.nextCallAt).toLocaleTimeString():'';
  $('#winners').replaceChildren();display.winners.forEach(x=>line($('#winners'),x.category_name+' · '+x.name));
