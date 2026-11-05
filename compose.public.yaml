@@ -1,6 +1,10 @@
 # Opt-in public GUEST deployment. Run together with compose.yaml.
 # Never expose API port 3000 via a tunnel public hostname.
 services:
+  api:
+    environment:
+      PUBLIC_GUEST_ORIGIN: ${PUBLIC_GUEST_ORIGIN:?Set PUBLIC_GUEST_ORIGIN to https://play.yourdomain.com in .env}
+
   guest-gateway:
     image: nginx:1.27-alpine
     restart: unless-stopped
