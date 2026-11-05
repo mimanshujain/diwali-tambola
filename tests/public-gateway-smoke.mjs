@@ -1,6 +1,6 @@
 // Run inside the API container:
 // docker compose -f compose.yaml -f compose.public.yaml exec -T api node --input-type=module - < tests/public-gateway-smoke.mjs
-import { randomUUID, randomInt } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 const edge = 'http://guest-gateway:8080';
 const app = 'http://127.0.0.1:3000';
@@ -49,6 +49,9 @@ const blocked = [
   ['admin players','/games/'+id+'/admin/players'],
   ['admin tickets','/games/'+id+'/admin/players/'+randomUUID()+'/ticket'],
   ['private TV','/tv/'+id],
+  ['short TV','/tv/'+code],
+  ['print asset','/print/client.js'],
+  ['all games','/games'],
   ['arbitrary number calls','/games/'+id+'/calls'],
   ['game metadata','/games/'+id],
   ['source client','/party/client.js'],
@@ -56,9 +59,8 @@ const blocked = [
 for (const [name,path] of blocked) expectStatus('Blocked '+name,await request(edge,path),[403,404]);
 expectStatus('Blocked game creation',await request(edge,'/games',{method:'POST',body:{name:'blocked'}}),[403,404]);
 expectStatus('Blocked manual call',await request(edge,'/games/'+id+'/calls/manual',{method:'POST',body:{number:47}}),[403,404]);
-const mobile='1555'+String(randomInt(1000000,10000000)).padStart(7,'0');
 const registration = await request(edge,'/games/'+id+'/players/register',{
-  method:'POST',body:{name:'Public Smoke Test',mobile,deviceId:randomUUID()},
+  method:'POST',body:{name:'Public Smoke Test',deviceId:randomUUID()},
 });
 expectStatus('Guest registration through edge',registration,[200,201]);
 if (!registration.data?.token) throw new Error('Guest registration did not return a player token');
@@ -67,3 +69,10 @@ expectStatus('Token-authenticated player recovery',await request(edge,'/games/'+
 }),[200]);
 expectStatus('Unauthenticated player recovery rejected',await request(edge,'/games/'+id+'/players/me'),[401]);
 console.log('PASS — guest-only gateway and token authorization, game',code);
+
+const restored=await request(edge,'/games/'+id+'/players/recover',{method:'POST',body:{recoveryCode:registration.data.recoveryCode,deviceId:randomUUID()}});
+expectStatus('Private code recovery through edge',restored,[200,201]);
+if(restored.data.ticket.id!==registration.data.ticket.id)throw new Error('Recovery changed ticket');
+for(const path of ['/stop','/release-stop','/timer','/call-next','/categories','/players/'+registration.data.player.id+'/approve','/players/'+registration.data.player.id+'/reset-access']) {
+ expectStatus('Blocked private host operation '+path,await request(edge,'/games/'+id+'/admin'+path,{method:'POST',body:{},headers:{'x-admin-key':process.env.ADMIN_TOKEN}}),[403,404]);
+}

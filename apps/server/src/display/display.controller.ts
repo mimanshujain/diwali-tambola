@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { DisplayService } from './display.service.js';
 import { adminPage, homeAdminPage, tvPage } from './pages.js';
 import { PARTY_CLIENT_JS } from '../party/party-client.js';
+import { PRINT_CLIENT_JS } from './print-client.js';
 import { LIVE_CLIENT_JS } from '../live/live-client.js';
 import { publicGuestOrigin } from './guest-origin.js';
 @Controller()
@@ -12,6 +13,9 @@ export class DisplayController {
   @Header('Content-Type', 'application/javascript; charset=utf-8')
   @Header('Cache-Control', 'no-store')
   clientScript(): string { return LIVE_CLIENT_JS; }
+  @Get('print/client.js')
+  @Header('Content-Type', 'application/javascript; charset=utf-8')
+  printScript():string {return PRINT_CLIENT_JS;}
   @Get('party/client.js')
   @Header('Content-Type', 'application/javascript; charset=utf-8')
   @Header('Cache-Control', 'no-store')

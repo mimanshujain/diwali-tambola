@@ -1,0 +1,42 @@
+import { html } from './theme.js';
+export function tvPage(gameId:string):string {
+ return html('Diwali Tambola · Live board',String.raw`
+ <style>
+ .tv-shell{height:100vh;height:100svh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px;padding:clamp(12px,2vh,26px);overflow:hidden}
+ .tv-header{display:flex;justify-content:space-between;gap:16px;align-items:center;min-width:0}.tv-title{min-width:0}.tv-title h1{font-size:clamp(20px,2.7vh,36px);margin:4px 0;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.tv-header .brand{font-size:11px}.tv-header .party-toolbar{margin:0}.tv-header .party-toolbar button{padding:6px 10px;min-height:34px}
+ .tv-main{display:grid;grid-template-columns:minmax(0,1fr) clamp(230px,26vw,420px);gap:14px;min-height:0}.tv-main .panel{padding:clamp(12px,1.8vh,24px)}
+ .tv-board{display:flex;flex-direction:column;min-height:0}.tv-board h2{font-size:16px;margin:0}.board{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));grid-template-rows:repeat(9,minmax(0,1fr));gap:clamp(3px,.8vh,8px);flex:1;min-height:0;margin-top:12px}
+ .ball{display:grid;place-items:center;min-height:0;border:1px solid #76526a;border-radius:8px;font-size:clamp(16px,3.4vh,40px);font-weight:750;font-variant-numeric:tabular-nums;background:#ffffff06;color:#ceb9c8}.ball.hit{color:#321c15;background:#efbd65;border-color:#ffdfa2}.ball.latest{background:#fff0c1;box-shadow:inset 0 0 0 3px white;color:#5e212c}
+ .tv-side{display:grid;grid-template-rows:1fr 1.4fr .8fr;gap:12px;min-height:0}.tv-current{text-align:center;display:flex;flex-direction:column;justify-content:center;min-height:0}.hero{font-family:Georgia,serif;font-size:clamp(58px,14vh,176px);line-height:1;color:#ffe6ac;font-variant-numeric:tabular-nums}.countdown{font-size:clamp(18px,3vh,32px);font-variant-numeric:tabular-nums;color:var(--teal)}.tv-current .eyebrow{margin:0}.tv-current .row{margin-top:6px}
+ .tv-join{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:0}.tv-join h2{font-size:16px;margin:0}.tv-join .qr{width:clamp(100px,18vh,210px);height:clamp(100px,18vh,210px);flex-shrink:1;min-height:60px}.tv-join .code{font-size:clamp(20px,3.3vh,36px)}#joinUrl{font-size:10px;overflow-wrap:anywhere;text-align:center;margin:0;max-width:100%}.tv-activity{overflow:hidden;min-height:0}.tv-activity h2{font-size:14px;margin:0 0 6px}.tv-activity .item{padding:3px 0;font-size:12px}.tv-activity .list{max-height:65%;overflow:auto}.tv-foot{padding:10px 16px}.prize-track{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.prize-card{min-width:0;border-left:2px solid #c18a43;padding-left:10px}.prize-card strong{display:block;color:#ffe2aa;font-size:clamp(12px,1.6vh,19px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.prize-card span{display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tv-foot .eyebrow{margin-bottom:5px}#tv-warning{color:#ffaaaa}
+ @media(max-width:850px),(max-aspect-ratio:4/3){.tv-shell{height:auto;min-height:100vh;overflow:visible}.tv-header{flex-wrap:wrap}.tv-main{grid-template-columns:1fr}.tv-board{min-height:450px}.tv-side{grid-template-columns:1fr 1fr;grid-template-rows:auto}.tv-activity{grid-column:1/-1;min-height:100px}.tv-join .qr{width:140px;height:140px}.prize-track{grid-template-columns:repeat(2,minmax(0,1fr))}.tv-title h1{white-space:normal}}
+ </style>
+ <div class="tv-shell"><header class="tv-header"><div class="tv-title"><div class="brand">🪔 DIWALI TAMBOLA</div><h1 id="gameName">Let the luck shine.</h1></div><div class="row"><span id="status" class="pill">Connecting…</span><span id="playerCount" class="small">0 players</span></div></header>
+ <main class="tv-main" data-game-id="${encodeURIComponent(gameId)}"><section class="panel tv-board"><div class="row between"><h2>Every number. A little closer.</h2><span class="small"><b id="count">0</b> / 90 called</span></div><div id="board" class="board" aria-label="Called number board"></div></section>
+ <aside class="tv-side"><section class="panel tv-current"><div class="eyebrow">Current number</div><div id="latest" class="hero" aria-live="polite">—</div><div class="row" style="justify-content:center"><span class="small">Next call</span><span id="countdown" class="countdown">—</span></div></section>
+ <section class="panel tv-join"><h2>Join the celebration</h2><img id="qr" class="qr" alt="Scan to join this game"><div id="joinCode" class="code">------</div><p id="joinUrl"></p></section>
+ <section class="panel tv-activity"><h2>Celebrations & updates</h2><div id="tv-warning" role="status"></div><div id="winners" class="list"></div><div id="rounds" class="small"></div><div id="powers" class="small"></div></section></aside></main>
+ <footer class="panel tv-foot"><div class="row between"><div class="eyebrow">Tonight’s prizes</div><span id="prize-page" class="small"></span></div><div id="prizes" class="prize-track"></div></footer></div>`,String.raw`
+(function(){
+ const $=s=>document.querySelector(s),id=$('[data-game-id]').dataset.gameId;
+ let game=null,snapshot=null,prizePage=0,refreshing=false;
+ $('#qr').src='/tv/'+encodeURIComponent(id)+'/qr.svg';
+ for(let number=1;number<=90;number++){const cell=document.createElement('div');cell.className='ball';cell.id='n'+number;cell.textContent=String(number);$('#board').append(cell);}
+ function prizes(){if(!snapshot)return;const categories=snapshot.categories;const pages=Math.max(1,Math.ceil(categories.length/4));prizePage%=pages;$('#prize-page').textContent=pages>1?(prizePage+1)+' / '+pages:'';$('#prizes').replaceChildren();
+  for(const category of categories.slice(prizePage*4,prizePage*4+4)){const card=document.createElement('div');card.className='prize-card';const title=document.createElement('strong');title.textContent=category.name;const detail=document.createElement('span');const winners=snapshot.winners.filter(w=>w.category_name===category.name);detail.textContent=winners.length?winners.map(w=>w.name).join(', '):category.status==='SUDDEN_DEATH_PENDING'?'Tie-break in progress':category.prize_description||'Waiting for a winner';card.append(title,detail);$('#prizes').append(card);}}
+ async function refresh(){if(refreshing)return;refreshing=true;try{
+  const response=await fetch('/games/'+encodeURIComponent(id)+'/display',{cache:'no-store'});if(!response.ok)throw Error('Game unavailable');snapshot=await response.json();game=snapshot.game;
+  $('#gameName').textContent=game.name;$('#status').textContent=game.emergencyStopped?'STOPPED':game.status;$('#count').textContent=String(snapshot.calls.length);$('#playerCount').textContent=snapshot.players.length+' players';
+  $('#joinCode').textContent=game.joinCode;$('#joinUrl').textContent=(snapshot.guestOrigin||location.origin)+'/g/'+game.joinCode;
+  const latest=snapshot.calls.at(-1)?.number;$('#latest').textContent=latest??'—';const called=new Set(snapshot.calls.map(c=>c.number));
+  for(let n=1;n<=90;n++)$('#n'+n).className='ball'+(called.has(n)?' hit':'')+(n===latest?' latest':'');
+  $('#winners').replaceChildren();for(const winner of snapshot.winners){const item=document.createElement('div');item.className='item';item.textContent=winner.category_name+' · '+winner.name;$('#winners').append(item);}
+  if(!snapshot.winners.length)$('#winners').textContent='The first celebration is still to come.';
+  $('#rounds').textContent=snapshot.suddenDeath.filter(r=>r.status!=='RESOLVED').map(r=>r.category_name+' · '+r.status).join(' / ');
+  $('#powers').textContent=snapshot.powerCalls[0]?snapshot.powerCalls[0].name+' chose '+snapshot.powerCalls[0].number:'';
+  $('#tv-warning').textContent=game.emergencyStopped?'Host has stopped play.':game.recoveredAt?'Recovered · waiting for the host':'';prizes();clock();
+ }catch(error){$('#status').textContent='Reconnecting…';$('#tv-warning').textContent='Connection lost · last confirmed board shown';}finally{refreshing=false;}}
+ function clock(){if(!game)return;if(game.status!=='RUNNING'||game.emergencyStopped){$('#countdown').textContent=game.status==='COMPLETED'?'Finished':game.status==='CREATED'?'Soon':'Paused';return;}const left=Math.max(0,Math.ceil((new Date(game.nextCallAt)-Date.now())/1000));$('#countdown').textContent=String(Math.floor(left/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0');}
+ refresh();setInterval(refresh,15000);setInterval(clock,300);setInterval(()=>{prizePage++;prizes();},10000);window.addEventListener('tambola:changed',refresh);
+})();`,'tv-page');
+}
