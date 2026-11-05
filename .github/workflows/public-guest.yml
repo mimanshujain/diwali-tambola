@@ -1,0 +1,40 @@
+name: Tambola public guest security checks
+
+on:
+  push:
+    branches:
+      - feature/cloudflare-guest-tunnel
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_PASSWORD: ci-test-only-password
+      ADMIN_TOKEN: ci-test-only-admin-token-do-not-use-in-production
+      PUBLIC_GUEST_ORIGIN: https://play.example.com
+      CLOUDFLARE_TUNNEL_TOKEN: ci-not-a-real-tunnel-token
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test and typecheck
+        run: |
+          npm ci
+          npm test
+          npm run typecheck
+          npm run build
+
+      - name: Build API and start isolated guest gateway (not the tunnel)
+        run: |
+          docker compose -f compose.yaml -f compose.public.yaml up -d --build --wait --wait-timeout 180 db api guest-gateway
+
+      - name: Validate guest allowlist and authenticated player journey
+        run: |
+          docker compose -f compose.yaml -f compose.public.yaml exec -T api node --input-type=module - < tests/public-gateway-smoke.mjs
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose -f compose.yaml -f compose.public.yaml ps
+          docker compose -f compose.yaml -f compose.public.yaml logs --tail=100 api guest-gateway db
