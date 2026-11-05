@@ -9,6 +9,7 @@ import type { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { createShuffledNumbers } from './domain/draw-sequence.js';
 import { generateTambolaTicket, type TicketGrid } from './domain/ticket-generator.js';
+import { WinnersService } from '../winners/winners.service.js';
 
 export type GameStatus = 'CREATED' | 'RUNNING' | 'PAUSED' | 'COMPLETED';
 export type CallSource = 'SCHEDULED' | 'MANUAL';
@@ -64,6 +65,11 @@ export class TambolaService {
        VALUES ($1::uuid, $2, $3, $4::smallint[])`,
       [id, name, intervalSeconds, createShuffledNumbers()],
     );
+    await this.database.query(`INSERT INTO winning_categories(id,game_id,rule_type,name)
+      SELECT gen_random_uuid(),$1,rule_type,name FROM (VALUES
+      ('EARLY_FIVE','Early Five'),('FOUR_CORNERS','Four Corners'),('TOP_LINE','Top Line'),
+      ('MIDDLE_LINE','Middle Line'),('BOTTOM_LINE','Bottom Line'),('FULL_HOUSE','Full House'),
+      ('SECOND_FULL_HOUSE','Second Full House')) AS defaults(rule_type,name)`,[id]);
     return this.getGame(id);
   }
 
@@ -295,6 +301,8 @@ export class TambolaService {
           [gameId, remainingAfterCall],
         );
       }
+
+      await WinnersService.snapshot(client, gameId, sequence);
 
       return {
         id: callId,
