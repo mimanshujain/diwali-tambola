@@ -44,10 +44,10 @@ header{display:flex;justify-content:space-between;align-items:center;gap:12px;pa
 function html(title:string,body:string,js:string):string{
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title><style>'+styles+'</style></head><body>'+body+'<script>'+js+'</script><script src="/socket.io/socket.io.js"></script><script src="/live/client.js"></script><script src="/party/client.js"></script></body></html>';
 }
-export function tvPage(_gameId:string):string{
+export function tvPage(gameId:string):string{
   return html('Diwali Tambola · TV',String.raw`
 <header class="tv-header"><div class="brand">✦ DIWALI TAMBOLA</div><div><span id="gameName">Loading game…</span> &nbsp; <span id="status" class="pill">—</span></div></header>
-<main class="wrap tv-layout">
+<main class="wrap tv-layout" data-game-id="${encodeURIComponent(gameId)}">
 <div class="panel tv-current"><div class="row" style="justify-content:space-between"><span class="muted">CURRENT NUMBER</span><span id="countdown" class="countdown">—</span></div><div class="hero" id="latest">—</div><div class="muted" style="text-align:center">Watch for the next call · Called <b id="count">0</b> / 90</div></div>
 <div class="panel tv-board"><h2>Numbers called</h2><div id="board" class="board"></div><p class="small">New calls are highlighted automatically.</p></div>
 <div class="panel tv-join"><h2>Join the game</h2><img id="qr" class="qr" alt="QR code to join Tambola"><div style="text-align:center;margin:14px 0"><div class="small">GAME CODE</div><div id="joinCode" style="font-size:clamp(28px,3.6vw,54px);letter-spacing:.14em;font-weight:900;color:#ffd28a">------</div></div><p class="small" style="overflow-wrap:anywhere;text-align:center" id="joinUrl"></p></div>
@@ -58,7 +58,7 @@ export function tvPage(_gameId:string):string{
 <div class="panel"><h2>Sudden Death</h2><div id="rounds" class="small">No tie-break round</div></div>
 </div></main>`,String.raw`
 (function(){
-const id=location.pathname.split('/').pop();const $=s=>document.querySelector(s);let game=null;
+const id=document.querySelector('[data-game-id]').dataset.gameId;const $=s=>document.querySelector(s);let game=null;
 $('#qr').src='/tv/'+encodeURIComponent(id)+'/qr.svg';
 $('#joinUrl').textContent='Loading game code…';
 const board=$('#board');for(let n=1;n<=90;n++){const el=document.createElement('div');el.className='ball';el.id='n'+n;el.textContent=String(n);board.appendChild(el);}
@@ -102,6 +102,10 @@ export function adminPage(_gameId:string):string{
 <div class="row" style="margin-top:12px"><button data-action="start">Start</button><button data-action="pause" class="ghost">Pause</button><button data-action="resume">Resume</button>
 <input id="manual" type="number" min="1" max="90" placeholder="1–90" style="width:100px"><button id="manualBtn" class="ghost">Call number</button></div>
 <p id="message" role="status"></p><div class="small">Sensitive operations require the admin key. Confirm manual calls before submission.</div></div>
+<section class="panel no-print"><h2>Open TV display</h2>
+<p class="small">Scan this QR code with your phone to open the TV display. Connect to the same Wi-Fi as the Raspberry Pi.</p>
+<img id="tvQr" class="qr" alt="QR code to open the TV display" width="280" height="280" style="height:auto">
+<p style="overflow-wrap:anywhere;text-align:center"><a id="tvUrl" target="_blank" rel="noopener">Loading TV link…</a></p></section>
 <div class="admin-grid"><section class="panel"><h2>Registered players</h2><div id="players"></div></section>
 <section class="panel"><h2>Lucky Strike requests</h2><div id="power-requests"></div></section>
 <section class="panel"><h2>Prize categories</h2><div id="categories"></div></section>
@@ -114,6 +118,7 @@ const id=location.pathname.split('/').pop();const $=s=>document.querySelector(s)
 const keyBox=$('#key');keyBox.value=sessionStorage.getItem('tambola-admin-key')||'';
 keyBox.oninput=()=>sessionStorage.setItem('tambola-admin-key',keyBox.value);
 $('#tvLink').href='/tv/'+encodeURIComponent(id);$('#joinLink').href='/join/'+encodeURIComponent(id);
+$('#tvQr').src='/admin/'+encodeURIComponent(id)+'/tv-qr.svg';
 function say(v){$('#message').textContent=v||'';}
 function element(tag,text){const el=document.createElement(tag);el.textContent=text;return el;}
 function line(container,label,actions){const item=element('div',label);item.className='item';container.appendChild(item);
@@ -138,6 +143,8 @@ async function refresh(){try{
  display=await req('/display','GET',undefined,false);
  $('#name').textContent=display.game.name;$('#status').textContent=display.game.status;
  $('#joinLink').href=(display.guestOrigin||location.origin)+'/g/'+encodeURIComponent(display.game.joinCode);
+ const tvUrl=location.origin+'/tv/'+encodeURIComponent(display.game.joinCode);
+ $('#tvLink').href=tvUrl;$('#tvUrl').href=tvUrl;$('#tvUrl').textContent=tvUrl;
  const last=display.calls.at(-1);$('#latest').textContent='Last number: '+(last?last.number:'—');
  $('#timer').textContent=display.game.nextCallAt?'Next: '+new Date(display.game.nextCallAt).toLocaleTimeString():'';
  $('#winners').replaceChildren();display.winners.forEach(x=>line($('#winners'),x.category_name+' · '+x.name));

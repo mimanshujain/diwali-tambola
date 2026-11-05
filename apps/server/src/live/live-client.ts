@@ -2,7 +2,8 @@
 export const LIVE_CLIENT_JS = String.raw`
 (function(){
   const parts = location.pathname.split('/').filter(Boolean);
-  const gameId = parts.length === 2 && /^(tv|join|admin)$/.test(parts[0]) ? parts[1].toLowerCase() : null;
+  const reference = (parts[0] === 'tv' && document.querySelector('[data-game-id]')?.dataset.gameId) || parts[1];
+  const gameId = parts.length === 2 && /^(tv|join|admin)$/.test(parts[0]) ? reference?.toLowerCase() : null;
   if (!gameId || !/^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(gameId)) return;
   const status = document.createElement('div');
   status.id = 'live-indicator'; status.setAttribute('role', 'status');
