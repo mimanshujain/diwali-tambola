@@ -12,7 +12,7 @@ import { generateTambolaTicket, type TicketGrid } from './domain/ticket-generato
 import { WinnersService } from '../winners/winners.service.js';
 
 export type GameStatus = 'CREATED' | 'RUNNING' | 'PAUSED' | 'COMPLETED';
-export type CallSource = 'SCHEDULED' | 'MANUAL';
+export type CallSource = 'SCHEDULED' | 'MANUAL' | 'SUPERPOWER';
 
 interface GameRow extends QueryResultRow {
   id: string;
@@ -236,85 +236,70 @@ export class TambolaService {
     });
   }
 
+  /** Used by approval inside the SAME database transaction as spending the token. */
+  async callPowerNumberLocked(
+    client: PoolClient, gameId: string, number: number, powerRequestId: string,
+  ): Promise<CalledNumber> {
+    this.assertUuid(gameId);
+    const game = await this.lockGame(client, gameId);
+    if (game.status !== 'RUNNING') throw new ConflictException('Resume the game before approving Lucky Strike.');
+    const result = await this.performCallLocked(client, gameId, game, 'SUPERPOWER', number, powerRequestId);
+    if (!result) throw new ConflictException('No numbers available for Lucky Strike.');
+    return result;
+  }
+
   private async callNumber(
-    gameId: string,
-    source: CallSource,
-    requestedNumber?: number,
+    gameId: string, source: CallSource, requestedNumber?: number,
   ): Promise<CalledNumber | null> {
     this.assertUuid(gameId);
-    return this.database.transaction(async (client) => {
+    return this.database.transaction(async client => {
       const game = await this.lockGame(client, gameId);
       if (game.status !== 'RUNNING') {
         if (source === 'SCHEDULED') return null;
         throw new ConflictException(`Cannot call a number while the game is ${game.status}.`);
       }
-
       if (source === 'SCHEDULED') {
-        const due = await client.query<{ is_due: boolean }>(
-          'SELECT (next_call_at <= NOW()) AS is_due FROM games WHERE id = $1::uuid',
-          [gameId],
-        );
+        const due = await client.query<{is_due: boolean}>(
+          'SELECT (next_call_at <= NOW()) AS is_due FROM games WHERE id=$1::uuid', [gameId]);
         if (!due.rows[0]?.is_due) return null;
       }
-
-      const remaining = (game.remaining_numbers ?? []).map(Number);
-      if (remaining.length === 0) {
-        await client.query(
-          `UPDATE games SET status = 'COMPLETED', next_call_at = NULL,
-             scheduler_remaining_seconds = NULL, paused_remaining_seconds = NULL,
-             completed_at = NOW()
-           WHERE id = $1::uuid`,
-          [gameId],
-        );
-        return null;
-      }
-
-      const number = requestedNumber ?? remaining[0];
-      if (!remaining.includes(number)) {
-        throw new ConflictException(`Number ${number} has already been called or is unavailable.`);
-      }
-      const remainingAfterCall = remaining.filter((candidate) => candidate !== number);
-      const sequence = game.next_number_sequence;
-      const callId = randomUUID();
-      const insert = await client.query<{ called_at: Date }>(
-        `INSERT INTO called_numbers (id, game_id, number, sequence, call_source)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5)
-         RETURNING called_at`,
-        [callId, gameId, number, sequence, source],
-      );
-
-      if (remainingAfterCall.length === 0) {
-        await client.query(
-          `UPDATE games SET remaining_numbers = $2::smallint[],
-             next_number_sequence = next_number_sequence + 1,
-             status = 'COMPLETED', next_call_at = NULL,
-             scheduler_remaining_seconds = NULL, paused_remaining_seconds = NULL,
-             completed_at = NOW()
-           WHERE id = $1::uuid`,
-          [gameId, remainingAfterCall],
-        );
-      } else {
-        await client.query(
-          `UPDATE games SET remaining_numbers = $2::smallint[],
-             next_number_sequence = next_number_sequence + 1,
-             next_call_at = NOW() + (interval_seconds * INTERVAL '1 second'),
-             scheduler_remaining_seconds = interval_seconds
-           WHERE id = $1::uuid`,
-          [gameId, remainingAfterCall],
-        );
-      }
-
-      await WinnersService.snapshot(client, gameId, sequence);
-
-      return {
-        id: callId,
-        gameId,
-        number,
-        sequence,
-        source,
-        calledAt: insert.rows[0].called_at,
-      };
+      return this.performCallLocked(client, gameId, game, source, requestedNumber);
     });
+  }
+
+  private async performCallLocked(
+    client: PoolClient, gameId: string, game: GameRow, source: CallSource,
+    requestedNumber?: number, powerRequestId?: string,
+  ): Promise<CalledNumber | null> {
+    const remaining = (game.remaining_numbers ?? []).map(Number);
+    if (!remaining.length) {
+      await client.query(`UPDATE games SET status='COMPLETED', next_call_at=NULL,
+        scheduler_remaining_seconds=NULL,paused_remaining_seconds=NULL,completed_at=NOW()
+        WHERE id=$1`, [gameId]);
+      return null;
+    }
+    const number = requestedNumber ?? remaining[0];
+    if (!remaining.includes(number)) throw new ConflictException(`Number ${number} was already called.`);
+    const after = remaining.filter(n => n !== number);
+    const sequence = game.next_number_sequence;
+    const id = randomUUID();
+    const saved = await client.query<{called_at: Date}>(
+      `INSERT INTO called_numbers(id,game_id,number,sequence,call_source,power_request_id)
+       VALUES($1,$2,$3,$4,$5,$6) RETURNING called_at`,
+      [id,gameId,number,sequence,source,powerRequestId ?? null]);
+    if (!after.length) {
+      await client.query(`UPDATE games SET remaining_numbers=$2::smallint[],
+        next_number_sequence=next_number_sequence+1,status='COMPLETED',next_call_at=NULL,
+        scheduler_remaining_seconds=NULL,paused_remaining_seconds=NULL,completed_at=NOW()
+        WHERE id=$1`, [gameId,after]);
+    } else {
+      await client.query(`UPDATE games SET remaining_numbers=$2::smallint[],
+        next_number_sequence=next_number_sequence+1,
+        next_call_at=NOW()+(interval_seconds * INTERVAL '1 second'),
+        scheduler_remaining_seconds=interval_seconds WHERE id=$1`,[gameId,after]);
+    }
+    await WinnersService.snapshot(client, gameId, sequence);
+    return {id,gameId,number,sequence,source,calledAt:saved.rows[0].called_at};
   }
 
   private async lockGame(client: PoolClient, gameId: string): Promise<GameRow> {

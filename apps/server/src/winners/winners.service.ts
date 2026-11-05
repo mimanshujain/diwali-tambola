@@ -4,6 +4,7 @@ import type { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { eligibleAtSequence, type Grid, type RuleType } from './domain/rules.js';
 import { SuddenDeathService } from './sudden-death.service.js';
+import { selectPriorityCandidates } from '../powers/domain/priority.js';
 
 type Policy = 'SHARED_PRIZE' | 'SUDDEN_DEATH';
 export interface Category extends QueryResultRow {id:string;game_id:string;rule_type:RuleType;name:string;active:boolean;max_winners:number;tie_break_policy:Policy;sudden_death_interval_seconds:number;sudden_death_ticket_size:number;}
@@ -71,8 +72,30 @@ export class WinnersService {
       if((await client.query('SELECT 1 FROM category_outcomes WHERE category_id=$1',[categoryId])).rowCount)throw new ConflictException('Prize already resolved');
       const first=await client.query<Eligibility>(`SELECT e.* FROM category_eligibility e JOIN tickets t ON t.id=e.ticket_id WHERE e.category_id=$1 AND t.status='SUBMITTED' ORDER BY first_eligible_sequence LIMIT 1`,[categoryId]);
       if(!first.rows[0])throw new ConflictException('Nobody has qualified for this category');
-      const sequence=Number(first.rows[0].first_eligible_sequence);
-      const ties=(await client.query<Eligibility>(`SELECT e.* FROM category_eligibility e JOIN tickets t ON t.id=e.ticket_id WHERE e.category_id=$1 AND t.status='SUBMITTED' AND e.first_eligible_sequence=$2 ORDER BY e.player_id`,[categoryId,sequence])).rows;
+      let sequence=Number(first.rows[0].first_eligible_sequence);
+      let ties=(await client.query<Eligibility>(`SELECT e.* FROM category_eligibility e JOIN tickets t ON t.id=e.ticket_id WHERE e.category_id=$1 AND t.status='SUBMITTED' AND e.first_eligible_sequence=$2 ORDER BY e.player_id`,[categoryId,sequence])).rows;
+      const priority=await client.query<{powered_player_id:string;call_sequence:number;closes_at:Date}>(
+        'SELECT powered_player_id,call_sequence,closes_at FROM power_priority_windows WHERE category_id=$1',[categoryId]);
+      if(priority.rows[0]){
+        const window=priority.rows[0];
+        if(new Date(window.closes_at).getTime()>Date.now()){
+          throw new ConflictException('Lucky Strike priority claim window is still open (30 seconds).');
+        }
+        const eligible=(await client.query<Eligibility & {claimed:boolean}>(`SELECT e.*,
+          EXISTS(SELECT 1 FROM winner_claims wc WHERE wc.category_id=e.category_id
+            AND wc.player_id=e.player_id AND wc.status='PENDING'
+            AND wc.claimed_at <= $3::timestamptz) AS claimed
+          FROM category_eligibility e JOIN tickets t ON t.id=e.ticket_id
+          WHERE e.category_id=$1 AND t.status='SUBMITTED' AND e.first_eligible_sequence<=$2`,
+          [categoryId,window.call_sequence,window.closes_at])).rows;
+        const selected=selectPriorityCandidates(eligible.map(e=>({playerId:e.player_id,
+          ticketId:e.ticket_id,sequence:e.first_eligible_sequence,claimed:e.claimed})),
+          window.powered_player_id,window.call_sequence);
+        if(!selected.length) throw new ConflictException('No eligible player remains for this prize');
+        const selectedIds=new Set(selected.map(p=>p.ticketId));
+        ties=eligible.filter(e=>selectedIds.has(e.ticket_id));
+        sequence=Math.min(...ties.map(e=>Number(e.first_eligible_sequence)));
+      }
       // The earliest qualification sequence wins; all players tying at that draw share by default.
       const pendingSuddenDeath=category.tie_break_policy==='SUDDEN_DEATH'&&ties.length>1;
       await client.query(`INSERT INTO category_outcomes(category_id,game_id,tie_break_policy,resolved_sequence,status) VALUES ($1,$2,$3,$4,$5)`,[categoryId,gameId,category.tie_break_policy,sequence,pendingSuddenDeath?'SUDDEN_DEATH_PENDING':'RESOLVED']);
@@ -84,7 +107,7 @@ export class WinnersService {
         for(const e of ties){await client.query(`INSERT INTO winners(id,category_id,game_id,player_id,ticket_id) VALUES($1,$2,$3,$4,$5)`,[randomUUID(),categoryId,gameId,e.player_id,e.ticket_id]);}
         if(category.rule_type==='FULL_HOUSE')await SuddenDeathService.seedSecondHouse(client,gameId);
       }
-      await client.query(`UPDATE winner_claims SET status=CASE WHEN first_eligible_sequence=$2 THEN 'VALID' ELSE 'REJECTED' END,reviewed_at=NOW() WHERE category_id=$1`,[categoryId,sequence]);
+      await client.query(`UPDATE winner_claims SET status=CASE WHEN player_id=ANY($2::uuid[]) THEN 'VALID' ELSE 'REJECTED' END,reviewed_at=NOW() WHERE category_id=$1`,[categoryId,ties.map(t=>t.player_id)]);
       return {categoryId,sequence,roundId,policy:category.tie_break_policy,status:pendingSuddenDeath?'SUDDEN_DEATH_PENDING':'RESOLVED',winners:pendingSuddenDeath?[]:ties.map(t=>({playerId:t.player_id,ticketId:t.ticket_id})),tiedPlayers:pendingSuddenDeath?ties.map(t=>({playerId:t.player_id,ticketId:t.ticket_id})):[]};
     });
   }

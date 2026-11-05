@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Header, Headers, Param, Post } from '@nestjs/common';
 import { PlayersService } from './players.service.js';
-import { renderJoinPage } from './join-page.js';
+import { renderJoinPage } from './join-page-m6.js';
 
 @Controller()
 export class PlayersController {
