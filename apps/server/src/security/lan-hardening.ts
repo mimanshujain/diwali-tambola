@@ -1,3 +1,4 @@
+import { assertAdmin } from './admin.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /** Small LAN-only guard. It does not replace TLS, network isolation or authentication. */
@@ -20,6 +21,8 @@ const attempts = new Map<string,{start:number,count:number}>();
 export function adminRateLimit(req: IncomingMessage,res: ServerResponse,next: () => void):void {
   const path = (req.url ?? '').split('?')[0];
   if (!/^\/games\/[^/]+\/admin(?:\/|$)/.test(path)) {next();return;}
+  // A valid host key must not be locked out by live refreshes or emergency controls.
+  try { const key=req.headers['x-admin-key'];assertAdmin(typeof key==='string'?key:undefined);next();return; } catch { /* Rate-limit invalid credentials below. */ }
   const ip = req.socket.remoteAddress ?? 'unknown';
   const now=Date.now();
   let state=attempts.get(ip);

@@ -18,7 +18,7 @@ export class GameSchedulerService implements OnModuleInit, OnModuleDestroy {
     // Games that were RUNNING are restored as PAUSED using the last 5-second checkpoint.
     const recovered = await this.database.query(
       `UPDATE games
-       SET status = 'PAUSED',
+       SET status = 'PAUSED', recovered_at=NOW(),
            paused_remaining_seconds = COALESCE(
              scheduler_remaining_seconds,
              GREATEST(0, CEIL(EXTRACT(EPOCH FROM (next_call_at - NOW()))))::integer,

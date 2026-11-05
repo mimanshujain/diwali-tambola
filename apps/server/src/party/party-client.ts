@@ -3,8 +3,7 @@ export const PARTY_CLIENT_JS=String.raw`
 (()=>{
 const route=location.pathname;
 const isTV=/^\/tv\/[^/]+$/.test(route);
-const isAdmin=/^\/admin\/[^/]+$/.test(route);
-if(!isTV&&!isAdmin)return;
+if(!isTV)return;
 const css=document.createElement('style');css.textContent=
 '@keyframes partyPop{from{opacity:0;transform:scale(.75)}to{opacity:1;transform:scale(1)}}'+
 '@keyframes numberGlow{0%{filter:brightness(1.9);transform:scale(1.07)}100%{filter:brightness(1);transform:scale(1)}}'+
@@ -36,23 +35,5 @@ lastNumber=number;oldWinnerTexts=new Set(winners);initialized=true;}
 const target=document.querySelector('#winners');if(target)new MutationObserver(scan).observe(target,{childList:true,subtree:true});
 const numberTarget=document.querySelector('#latest');if(numberTarget)new MutationObserver(scan).observe(numberTarget,{childList:true,characterData:true,subtree:true});
 scan();
-}
-if(isAdmin){
-const top=document.querySelector('.wrap .panel');if(!top)return;
-const printAll=b('Print all submitted tickets',async()=>{
-const windowPrint=window.open('','_blank');if(!windowPrint){alert('Allow popups for this site');return;}
-const gameId=route.split('/').pop();const key=document.querySelector('#key')?.value||sessionStorage.getItem('tambola-admin-key')||'';
-const root='/games/'+encodeURIComponent(gameId);
-async function get(path){const r=await fetch(root+path,{headers:{'x-admin-key':key},cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status+' for '+path);return r.json();}
-try{
- const players=await get('/admin/players');const selected=players.filter(p=>p.ticketStatus==='SUBMITTED');
- if(!selected.length)throw Error('No submitted tickets to print');
- const doc=windowPrint.document;doc.open();doc.write('<!doctype html><html><head><title>Tambola Tickets</title><style>body{font-family:Arial,sans-serif}section{break-inside:avoid;page-break-inside:avoid;margin:14px 0 22px;padding:10px;border:1px solid #999}table{border-collapse:collapse}td{border:1px solid #222;text-align:center;width:40px;height:36px;font-weight:bold}h3{margin:4px 0 8px}@media print{button{display:none}}</style></head><body></body></html>');doc.close();
- for(const p of selected){const t=await get('/admin/players/'+encodeURIComponent(p.id)+'/ticket');const section=doc.createElement('section');const title=doc.createElement('h3');title.textContent=t.playerName+' · Ticket '+t.ticketNumber;section.append(title);
- const table=doc.createElement('table');for(const row of t.grid){const tr=doc.createElement('tr');for(const value of row){const td=doc.createElement('td');td.textContent=value===null?'':String(value);tr.append(td);}table.append(tr);}section.append(table);doc.body.append(section);}
- windowPrint.focus();windowPrint.print();
-}catch(e){windowPrint.close();alert('Bulk printing failed: '+String(e.message||e));}
-});
-printAll.title='Uses your browser print dialog, not direct CUPS printing';top.appendChild(toolbar);
 }
 })();`;

@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
-import { eligibleAtSequence, type Grid, type RuleType } from './domain/rules.js';
+import { eligibleAtSequence, RULE_LABELS, type Grid, type RuleType } from './domain/rules.js';
 import { SuddenDeathService } from './sudden-death.service.js';
 import { selectPriorityCandidates } from '../powers/domain/priority.js';
 
@@ -17,17 +17,42 @@ function authenticateAdmin(key?:string):void {const configured=process.env.ADMIN
 export class WinnersService {
   constructor(private readonly db:DatabaseService){}
   async categories(gameIdRaw:string){const gameId=uuid(gameIdRaw);return (await this.db.query<Category>('SELECT * FROM winning_categories WHERE game_id=$1 ORDER BY rule_type',[gameId])).rows;}
+  async addCategory(gameIdRaw:string,key:string|undefined,input:Record<string,unknown>) {
+    authenticateAdmin(key);const gameId=uuid(gameIdRaw);
+    const name=String(input.name??'').trim(), rule=String(input.ruleType??''), prize=String(input.prizeDescription??'').trim();
+    const policy=input.tieBreakPolicy??'SHARED_PRIZE';
+    if(!name || name.length>80 || !Object.hasOwn(RULE_LABELS,rule) || prize.length>200 || !['SHARED_PRIZE','SUDDEN_DEATH'].includes(String(policy)))
+      throw new BadRequestException('Choose a supported rule, name (1–80 characters), prize (up to 200 characters) and tie policy.');
+    return this.db.transaction(async client=>{
+      const game=(await client.query<{status:string}>('SELECT status FROM games WHERE id=$1 FOR UPDATE',[gameId])).rows[0];
+      if(!game) throw new NotFoundException('Game not found');
+      if(game.status!=='CREATED') throw new ConflictException('Set categories before play starts.');
+      const duplicate=await client.query(`SELECT 1 FROM winning_categories WHERE game_id=$1 AND
+        (lower(name)=lower($2) OR (rule_type=$3 AND rule_type IN ('FULL_HOUSE','SECOND_FULL_HOUSE')))`,[gameId,name,rule]);
+      if(duplicate.rowCount) throw new ConflictException('Category name or house rule already exists.');
+      const result=await client.query(`INSERT INTO winning_categories(id,game_id,rule_type,name,prize_description,tie_break_policy)
+        VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,[randomUUID(),gameId,rule,name,prize,policy]);
+      return result.rows[0];
+    });
+  }
   async configure(gameIdRaw:string,categoryIdRaw:string,key:string|undefined,input:Record<string,unknown>){
     authenticateAdmin(key);const gameId=uuid(gameIdRaw),categoryId=uuid(categoryIdRaw);
-    const allowed=['active','maxWinners','tieBreakPolicy','suddenDeathIntervalSeconds','suddenDeathTicketSize'];
+    const allowed=['active','maxWinners','tieBreakPolicy','suddenDeathIntervalSeconds','suddenDeathTicketSize','name','prizeDescription'];
     if(Object.keys(input??{}).some(k=>!allowed.includes(k)))throw new BadRequestException('Unsupported configuration property');
     const patch=input??{};
+    if(patch.name!==undefined && (typeof patch.name!=='string'||!patch.name.trim()||patch.name.length>80))throw new BadRequestException('Invalid name');
+    if(patch.prizeDescription!==undefined && (typeof patch.prizeDescription!=='string'||patch.prizeDescription.length>200))throw new BadRequestException('Invalid prize description');
     if(patch.active!==undefined&&typeof patch.active!=='boolean')throw new BadRequestException('active must be boolean');
     if(patch.tieBreakPolicy!==undefined&&!['SHARED_PRIZE','SUDDEN_DEATH'].includes(String(patch.tieBreakPolicy)))throw new BadRequestException('Invalid tie policy');
     for(const [keyName,min,max] of [['maxWinners',1,100],['suddenDeathIntervalSeconds',2,300],['suddenDeathTicketSize',1,15]] as const){if(patch[keyName]!==undefined&&(!Number.isInteger(patch[keyName])||Number(patch[keyName])<min||Number(patch[keyName])>max))throw new BadRequestException(`Invalid ${keyName}`);}
     return this.db.transaction(async client=>{
       const game=await client.query<{status:string}>('SELECT status FROM games WHERE id=$1 FOR UPDATE',[gameId]);if(!game.rows[0])throw new NotFoundException('Game not found');if(game.rows[0].status!=='CREATED')throw new ConflictException('Categories can only be configured before game starts');
-      const updated=await client.query<Category>(`UPDATE winning_categories SET active=COALESCE($3,active),max_winners=COALESCE($4,max_winners),tie_break_policy=COALESCE($5,tie_break_policy),sudden_death_interval_seconds=COALESCE($6,sudden_death_interval_seconds),sudden_death_ticket_size=COALESCE($7,sudden_death_ticket_size) WHERE game_id=$1 AND id=$2 RETURNING *`,[gameId,categoryId,patch.active??null,patch.maxWinners??null,patch.tieBreakPolicy??null,patch.suddenDeathIntervalSeconds??null,patch.suddenDeathTicketSize??null]);if(!updated.rows[0])throw new NotFoundException('Category not found');return updated.rows[0];
+      if(typeof patch.name==='string') {
+        patch.name=patch.name.trim();
+        const duplicate=await client.query('SELECT 1 FROM winning_categories WHERE game_id=$1 AND id<>$2 AND lower(name)=lower($3)',[gameId,categoryId,patch.name]);
+        if(duplicate.rowCount) throw new ConflictException('Category name already exists.');
+      }
+      const updated=await client.query<Category>(`UPDATE winning_categories SET name=COALESCE($8,name),prize_description=COALESCE($9,prize_description),active=COALESCE($3,active),max_winners=COALESCE($4,max_winners),tie_break_policy=COALESCE($5,tie_break_policy),sudden_death_interval_seconds=COALESCE($6,sudden_death_interval_seconds),sudden_death_ticket_size=COALESCE($7,sudden_death_ticket_size) WHERE game_id=$1 AND id=$2 RETURNING *`,[gameId,categoryId,patch.active??null,patch.maxWinners??null,patch.tieBreakPolicy??null,patch.suddenDeathIntervalSeconds??null,patch.suddenDeathTicketSize??null,patch.name??null,patch.prizeDescription??null]);if(!updated.rows[0])throw new NotFoundException('Category not found');return updated.rows[0];
     });
   }
   /** Snapshot the earliest qualifying call sequence. Executed INSIDE the same draw transaction. */
@@ -54,6 +79,7 @@ export class WinnersService {
     const gameId=uuid(gameIdRaw),categoryId=uuid(categoryIdRaw),playerId=await this.player(gameId,auth);
     return this.db.transaction(async client=>{
       const game=await client.query<{status:string}>('SELECT status FROM games WHERE id=$1 FOR UPDATE',[gameId]);if(!game.rows[0])throw new NotFoundException('Game not found');
+      if((await client.query('SELECT 1 FROM games WHERE id=$1 AND ended_by_admin=true',[gameId])).rowCount)throw new ConflictException('Game ended by host.');
       const category=await client.query<Category>('SELECT * FROM winning_categories WHERE id=$1 AND game_id=$2',[categoryId,gameId]);if(!category.rows[0]||!category.rows[0].active)throw new NotFoundException('Category not found');
       if((await client.query('SELECT 1 FROM category_outcomes WHERE category_id=$1',[categoryId])).rowCount)throw new ConflictException('Prize already resolved');
       const row=await client.query<Eligibility>(`SELECT e.* FROM category_eligibility e JOIN tickets t ON t.id=e.ticket_id WHERE e.category_id=$1 AND e.player_id=$2 AND t.status='SUBMITTED'`,[categoryId,playerId]);

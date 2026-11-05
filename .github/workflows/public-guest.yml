@@ -18,12 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
       - name: Test and typecheck
         run: |
           npm ci
           npm test
           npm run typecheck
           npm run build
+          node --test tests/tv-access.mjs
 
       - name: Build API and start isolated guest gateway (not the tunnel)
         run: |
@@ -32,6 +37,12 @@ jobs:
       - name: Validate guest allowlist and authenticated player journey
         run: |
           docker compose -f compose.yaml -f compose.public.yaml exec -T api node --input-type=module - < tests/public-gateway-smoke.mjs
+
+      - name: Validate host operations and ticket recovery
+        run: node tests/party-operations.mjs
+
+      - name: Rehearse database backup and restore
+        run: node tests/backup-rehearsal.mjs
 
       - name: Show container logs on failure
         if: failure()

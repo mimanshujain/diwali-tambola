@@ -66,7 +66,7 @@ gid = game['id']
 print('  Created isolated test game:', gid)
 
 print('[2] TV / admin / guest pages and locally generated QR')
-for route, marker in [(f'/tv/{gid}','Numbers called'),(f'/admin/{gid}','Lucky Strike requests'),(f'/join/{gid}','Get my ticket'),('/admin','New game')]:
+for route, marker in [(f'/tv/{gid}','Every number.'),(f'/admin/{gid}','Lucky Strike requests'),(f'/join/{gid}','Get my ticket'),('/admin','Create a game')]:
     assert marker in http('GET',route), f'Expected screen missing: {route}'
 # The public display and QR must both work on a brand-new game before any
 # game-control transaction has run; this catches missing startup migrations.
@@ -78,10 +78,10 @@ players = []
 for index in range(2):
     p = http('POST',f'/games/{gid}/players/register',{
         'name':f'M5 Test Player {index+1}',
-        'mobile':'1555010' + str(1000 + index),
         'deviceId':str(uuid4()),
     })
     token = p['token']; players.append((p['player']['id'],token))
+    http('POST',f"/games/{gid}/admin/players/{p['player']['id']}/approve",headers=admin())
     http('POST',f'/games/{gid}/players/me/submit',headers=bearer(token))
 assert len(http('GET',f'/games/{gid}/display')['players']) == 2
 first = players[0][1]
@@ -135,7 +135,7 @@ if '--priority' in __import__('sys').argv:
     for i in range(2):
         p=http('POST',f'/games/{g}/players/register',{
             'name':'Power Priority ' + ('A' if i==0 else 'B'),
-            'mobile':'1555020'+str(1000+i), 'deviceId':str(uuid4())})
+            'deviceId':str(uuid4())})
         identities.append(p)
     a,b=identities
     token_b=b['token']
@@ -150,6 +150,7 @@ if '--priority' in __import__('sys').argv:
     assert common, 'Unable to construct tickets with shared number'
     chosen=common[0]
     for p in (a,b):
+        http('POST',f"/games/{g}/admin/players/{p['player']['id']}/approve",headers=admin())
         http('POST',f'/games/{g}/players/me/submit',headers=bearer(p['token']))
     categories=http('GET',f'/games/{g}/categories')
     house=next(c for c in categories if c['rule_type']=='FULL_HOUSE')

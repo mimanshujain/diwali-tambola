@@ -17,14 +17,23 @@ export class PlayersController {
     return this.players.register(gameId, body ?? {});
   }
 
+  @Post('games/:gameId/players/recover')
+  recover(@Param('gameId') id:string,@Body() body:Record<string,unknown>) {return this.players.recover(id,body??{});}
+  @Post('games/:gameId/admin/players/:playerId/approve')
+  approve(@Param('gameId') id:string,@Param('playerId') playerId:string,@Headers('x-admin-key') key?:string) {return this.players.approve(id,playerId,key);}
+  @Post('games/:gameId/admin/players/:playerId/withdraw')
+  withdraw(@Param('gameId') id:string,@Param('playerId') playerId:string,@Headers('x-admin-key') key?:string) {return this.players.withdraw(id,playerId,key);}
+  @Post('games/:gameId/admin/players/:playerId/reset-access')
+  resetAccess(@Param('gameId') id:string,@Param('playerId') playerId:string,@Headers('x-admin-key') key?:string) {return this.players.resetAccess(id,playerId,key);}
+
   @Get('games/:gameId/players/me')
   me(@Param('gameId') gameId: string, @Headers('authorization') authorization?: string) {
     return this.players.me(gameId, authorization);
   }
 
   @Post('games/:gameId/players/me/submit')
-  submit(@Param('gameId') gameId: string, @Headers('authorization') authorization?: string) {
-    return this.players.submit(gameId, authorization);
+  submit(@Param('gameId') gameId: string, @Headers('authorization') authorization:string|undefined, @Body() body:{ticketId?:unknown}) {
+    return this.players.submit(gameId, authorization, body?.ticketId);
   }
 
   @Post('games/:gameId/players/me/regenerate')
