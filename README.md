@@ -95,3 +95,7 @@ Guest registration, mobile/device duplicate controls, private player tickets, dr
 
 ## Milestone 4A
 Prize eligibility, player claims, admin review, shared-prize settlement. See docs/MILESTONE_4.md.
+
+
+## Milestone 4B
+Sudden-death mini-rounds and Second Full House. See docs/MILESTONE_4B.md.

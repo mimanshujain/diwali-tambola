@@ -3,6 +3,7 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { eligibleAtSequence, type Grid, type RuleType } from './domain/rules.js';
+import { SuddenDeathService } from './sudden-death.service.js';
 
 type Policy = 'SHARED_PRIZE' | 'SUDDEN_DEATH';
 export interface Category extends QueryResultRow {id:string;game_id:string;rule_type:RuleType;name:string;active:boolean;max_winners:number;tie_break_policy:Policy;sudden_death_interval_seconds:number;sudden_death_ticket_size:number;}
@@ -42,6 +43,7 @@ export class WinnersService {
         await client.query(`INSERT INTO category_eligibility(id,game_id,category_id,ticket_id,player_id,first_eligible_sequence) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(category_id,ticket_id) DO NOTHING`,[randomUUID(),gameId,category.id,ticket.id,ticket.player_id,eligibleSequence]);
       }
     }
+    await SuddenDeathService.seedSecondHouse(client,gameId);
   }
   private async player(gameId:string,token?:string):Promise<string>{
     const match=/^Bearer ([A-Za-z0-9_-]{40,100})$/.exec(token??'');if(!match)throw new UnauthorizedException('Player token required');
@@ -74,9 +76,16 @@ export class WinnersService {
       // The earliest qualification sequence wins; all players tying at that draw share by default.
       const pendingSuddenDeath=category.tie_break_policy==='SUDDEN_DEATH'&&ties.length>1;
       await client.query(`INSERT INTO category_outcomes(category_id,game_id,tie_break_policy,resolved_sequence,status) VALUES ($1,$2,$3,$4,$5)`,[categoryId,gameId,category.tie_break_policy,sequence,pendingSuddenDeath?'SUDDEN_DEATH_PENDING':'RESOLVED']);
-      if(!pendingSuddenDeath){for(const e of ties.slice(0,Math.max(category.max_winners,ties.length))){await client.query(`INSERT INTO winners(id,category_id,game_id,player_id,ticket_id) VALUES($1,$2,$3,$4,$5)`,[randomUUID(),categoryId,gameId,e.player_id,e.ticket_id]);}}
+      let roundId:string|null=null;
+      if(pendingSuddenDeath){
+        roundId=await SuddenDeathService.create(client,gameId,categoryId,category.sudden_death_interval_seconds,category.sudden_death_ticket_size,ties);
+      } else {
+        // All players first eligible on this main-game draw share by default.
+        for(const e of ties){await client.query(`INSERT INTO winners(id,category_id,game_id,player_id,ticket_id) VALUES($1,$2,$3,$4,$5)`,[randomUUID(),categoryId,gameId,e.player_id,e.ticket_id]);}
+        if(category.rule_type==='FULL_HOUSE')await SuddenDeathService.seedSecondHouse(client,gameId);
+      }
       await client.query(`UPDATE winner_claims SET status=CASE WHEN first_eligible_sequence=$2 THEN 'VALID' ELSE 'REJECTED' END,reviewed_at=NOW() WHERE category_id=$1`,[categoryId,sequence]);
-      return {categoryId,sequence,policy:category.tie_break_policy,status:pendingSuddenDeath?'SUDDEN_DEATH_PENDING':'RESOLVED',winners:pendingSuddenDeath?[]:ties.map(t=>({playerId:t.player_id,ticketId:t.ticket_id})),tiedPlayers:pendingSuddenDeath?ties.map(t=>({playerId:t.player_id,ticketId:t.ticket_id})):[]};
+      return {categoryId,sequence,roundId,policy:category.tie_break_policy,status:pendingSuddenDeath?'SUDDEN_DEATH_PENDING':'RESOLVED',winners:pendingSuddenDeath?[]:ties.map(t=>({playerId:t.player_id,ticketId:t.ticket_id})),tiedPlayers:pendingSuddenDeath?ties.map(t=>({playerId:t.player_id,ticketId:t.ticket_id})):[]};
     });
   }
 }
