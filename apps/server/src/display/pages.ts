@@ -7,7 +7,7 @@ button.ghost{background:#273448;color:#fff;border:1px solid #546478}button.red{b
 input,select{background:#121a27;border:1px solid #59687a;color:#fff;border-radius:8px;padding:11px;width:100%;min-width:0}
 header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:18px 25px;border-bottom:1px solid #42536a;background:#121c2aee}
 .brand{font-weight:900;color:#ffd28a;letter-spacing:.05em}h1,h2,h3{margin:8px 0 16px}h1{font-size:clamp(27px,3vw,44px)}h2{font-size:22px}
-.wrap{max-width:1480px;margin:auto;padding:22px}.columns{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px}
+.wrap{max-width:1480px;margin:auto;padding:22px}
 .panel{background:#1b2738;border:1px solid #42536a;border-radius:18px;padding:20px;margin-bottom:18px;min-width:0}
 .small{font-size:13px;color:#b9c8d9}.muted{color:#b5c5d7}.pill{display:inline-block;border:1px solid #536b7e;background:#27394c;border-radius:20px;padding:5px 11px;font-size:12px}
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row>*{flex-shrink:0}.field{min-width:120px;flex:1}label{display:block;font-size:13px;color:#bfd0e0;margin:6px 0}
@@ -18,7 +18,27 @@ header{display:flex;justify-content:space-between;align-items:center;gap:12px;pa
 .countdown{font-variant-numeric:tabular-nums;font-size:26px;font-weight:700;color:#ffd08a}
 .item{border-bottom:1px solid #34475a;padding:10px 0}.item:last-child{border:0}.qr{background:#fff;padding:12px;border-radius:13px;width:min(100%,275px);display:block;margin:auto}
 #players,#winners,#powers,#claims,#power-requests,#rounds{max-height:340px;overflow:auto} .admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-@media(max-width:850px){.columns,.admin-grid{grid-template-columns:1fr}.wrap{padding:12px}header{padding:14px}.panel{padding:15px}.board{gap:4px}.ball{border-radius:7px;font-size:12px}}
+@media(max-width:850px){.admin-grid{grid-template-columns:1fr}.wrap{padding:12px}header{padding:14px}.panel{padding:15px}.board{gap:4px}.ball{border-radius:7px;font-size:12px}}
+.tv-header{flex-wrap:wrap;padding:10px 18px;gap:8px 14px}
+.tv-header>div{min-width:0;overflow-wrap:anywhere}
+.tv-header .party-toolbar{margin:0;gap:6px}
+.tv-header .party-toolbar button{padding:7px 10px}
+.tv-layout{display:grid;grid-template-areas:"current" "board" "join" "details";gap:12px}
+.tv-layout .panel{margin:0}
+.tv-current{grid-area:current}.tv-board{grid-area:board}.tv-join{grid-area:join}
+.tv-details{grid-area:details;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));align-items:start;gap:12px}
+.tv-join .qr{aspect-ratio:1}
+@media(min-width:600px) and (min-aspect-ratio:4/3){
+  .tv-layout{grid-template-columns:minmax(0,1fr) clamp(185px,24vw,320px);grid-template-areas:"board current" "board join" "details details";grid-template-rows:auto 1fr auto;align-items:start;padding:12px 18px}
+  .tv-layout .panel{padding:clamp(10px,1.8vh,20px)}
+  .tv-layout h2{margin:0 0 10px;font-size:clamp(16px,2.6vh,24px)}
+  .tv-board p{margin:8px 0 0}
+  .tv-board .board{gap:clamp(3px,.7vh,7px)}
+  .tv-board .ball{aspect-ratio:auto;height:clamp(20px,6.7vh,80px);font-size:clamp(12px,2.8vh,30px)}
+  .tv-current .hero{font-size:clamp(42px,13vh,144px)}
+  .tv-current .countdown{font-size:clamp(16px,3.5vh,26px)}
+  .tv-join .qr{width:min(100%,22vh,232px);padding:6px}
+}
 @media print{header,.no-print{display:none!important}body{color:#000;background:#fff}.panel{border:0;background:#fff;color:#000}}
 `;
 function html(title:string,body:string,js:string):string{
@@ -26,17 +46,17 @@ function html(title:string,body:string,js:string):string{
 }
 export function tvPage(_gameId:string):string{
   return html('Diwali Tambola · TV',String.raw`
-<header><div class="brand">✦ DIWALI TAMBOLA</div><div><span id="gameName">Loading game…</span> &nbsp; <span id="status" class="pill">—</span></div></header>
-<div class="wrap columns"><main>
-<div class="panel"><div class="row" style="justify-content:space-between"><span class="muted">CURRENT NUMBER</span><span id="countdown" class="countdown">—</span></div><div class="hero" id="latest">—</div><div class="muted" style="text-align:center">Watch for the next call · Called <b id="count">0</b> / 90</div></div>
-<div class="panel"><h2>Numbers called</h2><div id="board" class="board"></div><p class="small">New calls are highlighted automatically.</p></div>
+<header class="tv-header"><div class="brand">✦ DIWALI TAMBOLA</div><div><span id="gameName">Loading game…</span> &nbsp; <span id="status" class="pill">—</span></div></header>
+<main class="wrap tv-layout">
+<div class="panel tv-current"><div class="row" style="justify-content:space-between"><span class="muted">CURRENT NUMBER</span><span id="countdown" class="countdown">—</span></div><div class="hero" id="latest">—</div><div class="muted" style="text-align:center">Watch for the next call · Called <b id="count">0</b> / 90</div></div>
+<div class="panel tv-board"><h2>Numbers called</h2><div id="board" class="board"></div><p class="small">New calls are highlighted automatically.</p></div>
+<div class="panel tv-join"><h2>Join the game</h2><img id="qr" class="qr" alt="QR code to join Tambola"><div style="text-align:center;margin:14px 0"><div class="small">GAME CODE</div><div id="joinCode" style="font-size:clamp(28px,3.6vw,54px);letter-spacing:.14em;font-weight:900;color:#ffd28a">------</div></div><p class="small" style="overflow-wrap:anywhere;text-align:center" id="joinUrl"></p></div>
+<div class="tv-details">
 <div class="panel"><h2>Prize board</h2><div id="winners"><span class="muted">No winners announced yet.</span></div></div>
-</main><aside>
-<div class="panel"><h2>Join the game</h2><img id="qr" class="qr" alt="QR code to join Tambola"><div style="text-align:center;margin:14px 0"><div class="small">GAME CODE</div><div id="joinCode" style="font-size:clamp(28px,3.6vw,54px);letter-spacing:.14em;font-weight:900;color:#ffd28a">------</div></div><p class="small" style="overflow-wrap:anywhere;text-align:center" id="joinUrl"></p></div>
 <div class="panel"><h2>Players <span id="playerCount" class="pill">0</span></h2><div id="players"></div></div>
 <div class="panel"><h2>✨ Lucky Strikes</h2><div id="powers" class="small">No Lucky Strikes yet</div></div>
 <div class="panel"><h2>Sudden Death</h2><div id="rounds" class="small">No tie-break round</div></div>
-</aside></div>`,String.raw`
+</div></main>`,String.raw`
 (function(){
 const id=location.pathname.split('/').pop();const $=s=>document.querySelector(s);let game=null;
 $('#qr').src='/tv/'+encodeURIComponent(id)+'/qr.svg';
