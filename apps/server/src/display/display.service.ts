@@ -40,6 +40,15 @@ export class DisplayService {
       submitted:p.status==='SUBMITTED'})),categories:categories.rows,winners:winners.rows,
       powerCalls:powers.rows,suddenDeath:rounds.rows};
   }
+  async resolveJoinCode(rawCode: string): Promise<string> {
+    const code = rawCode.trim().toUpperCase();
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) throw new NotFoundException('Game code not found');
+    const result = await this.db.query<{id:string}>(
+      'SELECT id FROM games WHERE join_code=$1', [code],
+    );
+    if (!result.rows[0]) throw new NotFoundException('Game code not found');
+    return result.rows[0].id;
+  }
   async adminTicket(gameIdRaw:string,playerIdRaw:string,key?:string):Promise<Record<string,unknown>>{
     assertAdmin(key);const gameId=uuid(gameIdRaw),playerId=uuid(playerIdRaw);
     const row=await this.db.query<{name:string;ticket_number:number;grid:(number|null)[][];status:string}>(
