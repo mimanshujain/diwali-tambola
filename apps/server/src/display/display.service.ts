@@ -3,6 +3,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { TambolaService } from '../tambola/tambola.service.js';
 import { assertAdmin } from '../security/admin.js';
 import type { QueryResultRow } from 'pg';
+import { publicGuestOrigin } from './guest-origin.js';
 const uuid = (s:string):string => {
   if (!/^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(s))
     throw new BadRequestException('Invalid UUID');
@@ -36,9 +37,31 @@ export class DisplayService {
         `SELECT c.name AS category_name,r.status,r.draw_sequence FROM sudden_death_rounds r
          JOIN winning_categories c ON c.id=r.category_id WHERE r.game_id=$1 ORDER BY r.created_at DESC LIMIT 4`,[id]),
     ]);
-    return {game,calls,players:players.rows.map(p=>({id:p.id,name:p.name,ticketNumber:p.ticket_number,
+    return {game,calls,guestOrigin:publicGuestOrigin(),players:players.rows.map(p=>({id:p.id,name:p.name,ticketNumber:p.ticket_number,
       submitted:p.status==='SUBMITTED'})),categories:categories.rows,winners:winners.rows,
       powerCalls:powers.rows,suddenDeath:rounds.rows};
+  }
+  /** Internet-facing display data. Deliberately excludes rosters, winners' names,
+   * player identifiers, phone numbers, admin data and Lucky Strike identities. */
+  async guestSnapshot(gameIdRaw: string): Promise<Record<string, unknown>> {
+    const id = uuid(gameIdRaw);
+    const [game, calls, categories] = await Promise.all([
+      this.tambola.getGame(id),
+      this.tambola.listCalls(id),
+      this.db.query<{id:string;name:string;active:boolean;status:string|null}>(
+        `SELECT c.id,c.name,c.active,o.status
+         FROM winning_categories c LEFT JOIN category_outcomes o ON o.category_id=c.id
+         WHERE c.game_id=$1 AND c.active=true ORDER BY c.name`, [id],
+      ),
+    ]);
+    return {
+      game: {
+        id: game.id, name: game.name, status: game.status,
+        nextCallAt: game.nextCallAt,
+      },
+      calls: calls.map(call => ({number: call.number, sequence: call.sequence})),
+      categories: categories.rows,
+    };
   }
   async resolveJoinCode(rawCode: string): Promise<string> {
     const code = rawCode.trim().toUpperCase();
