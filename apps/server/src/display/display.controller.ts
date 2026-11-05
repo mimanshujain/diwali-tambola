@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Headers, Param, Redirect } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Header, Headers, Param, Redirect, Req } from '@nestjs/common';
 import QRCode from 'qrcode';
 import { DisplayService } from './display.service.js';
 import { adminPage, homeAdminPage, tvPage } from './pages.js';
@@ -23,11 +23,23 @@ export class DisplayController {
     return {url: '/join/'+encodeURIComponent(id)};
   }
   @Get('tv/:gameId') @Header('Content-Type','text/html; charset=utf-8')
-  tv(@Param('gameId') gameId:string):string {return tvPage(gameId);}
+  async tv(@Param('gameId') reference:string):Promise<string> {
+    return tvPage(await this.display.resolveTvGameId(reference));
+  }
   @Get('admin') @Header('Content-Type','text/html; charset=utf-8')
   adminHome():string {return homeAdminPage();}
   @Get('admin/:gameId') @Header('Content-Type','text/html; charset=utf-8')
   admin(@Param('gameId') gameId:string):string {return adminPage(gameId);}
+  @Get('admin/:gameId/tv-qr.svg')
+  @Header('Content-Type', 'image/svg+xml; charset=utf-8')
+  @Header('Cache-Control', 'no-store, private')
+  async tvQr(@Param('gameId') gameId:string, @Headers('host') host:string,
+    @Req() request:{protocol:string}):Promise<string> {
+    if (!/^(?:[\da-zA-Z.-]+)(?::\d{1,5})?$/.test(host ?? '') ||
+        !['http', 'https'].includes(request.protocol)) throw new BadRequestException('Invalid request origin');
+    const url = await this.display.tvUrl(gameId, request.protocol + '://' + host);
+    return QRCode.toString(url, {type:'svg',margin:2,width:280,errorCorrectionLevel:'M'});
+  }
   @Get('tv/:gameId/qr.svg') @Header('Content-Type','image/svg+xml; charset=utf-8')
   @Header('Cache-Control','no-store')
   async qr(@Param('gameId') id:string,@Headers('host') rawHost?:string):Promise<string>{
