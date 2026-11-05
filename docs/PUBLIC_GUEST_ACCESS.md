@@ -119,7 +119,8 @@ player names; public `guest-display` must not include any.
 ## Abuse and privacy controls
 
 - The Nginx gateway only forwards exact guest routes. Registration is throttled
-  to 5 requests per minute per trusted Cloudflare client IP, with a burst of 5.
+  to 60 requests per minute per trusted Cloudflare client IP, with a burst of 60
+  to accommodate many guests behind one Wi-Fi NAT address.
   Player actions are similarly limited, and request bodies are capped at 4 KB.
 - Configure Cloudflare WAF/rate limiting/bot defenses appropriate for your plan,
   especially at the registration endpoint; do not enable a CAPTCHA challenge
