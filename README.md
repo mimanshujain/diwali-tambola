@@ -87,3 +87,7 @@ M2 endpoints do not yet have player/admin authentication. Restrict access to you
 ## Current implementation boundary
 
 Tickets are saved as AVAILABLE and are not yet attached to players. Registration, ticket submission/reissue, winning categories, claims, tie-breaks, superpower, WebSockets, and printing are later milestones.
+
+
+## Milestone 3
+Guest registration, mobile/device duplicate controls, private player tickets, draft submission, and audited admin reissue. See `docs/MILESTONE_3.md`.
