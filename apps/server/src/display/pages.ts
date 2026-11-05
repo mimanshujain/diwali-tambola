@@ -22,7 +22,7 @@ header{display:flex;justify-content:space-between;align-items:center;gap:12px;pa
 @media print{header,.no-print{display:none!important}body{color:#000;background:#fff}.panel{border:0;background:#fff;color:#000}}
 `;
 function html(title:string,body:string,js:string):string{
-  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title><style>'+styles+'</style></head><body>'+body+'<script>'+js+'</script><script src="/socket.io/socket.io.js"></script><script src="/live/client.js"></script></body></html>';
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title><style>'+styles+'</style></head><body>'+body+'<script>'+js+'</script><script src="/socket.io/socket.io.js"></script><script src="/live/client.js"></script><script src="/party/client.js"></script></body></html>';
 }
 export function tvPage(_gameId:string):string{
   return html('Diwali Tambola · TV',String.raw`

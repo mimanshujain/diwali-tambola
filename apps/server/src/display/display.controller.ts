@@ -2,6 +2,7 @@ import { Controller, Get, Header, Headers, Param } from '@nestjs/common';
 import QRCode from 'qrcode';
 import { DisplayService } from './display.service.js';
 import { adminPage, homeAdminPage, tvPage } from './pages.js';
+import { PARTY_CLIENT_JS } from '../party/party-client.js';
 import { LIVE_CLIENT_JS } from '../live/live-client.js';
 @Controller()
 export class DisplayController {
@@ -10,6 +11,10 @@ export class DisplayController {
   @Header('Content-Type', 'application/javascript; charset=utf-8')
   @Header('Cache-Control', 'no-store')
   clientScript(): string { return LIVE_CLIENT_JS; }
+  @Get('party/client.js')
+  @Header('Content-Type', 'application/javascript; charset=utf-8')
+  @Header('Cache-Control', 'no-store')
+  partyClient(): string { return PARTY_CLIENT_JS; }
   @Get('tv/:gameId') @Header('Content-Type','text/html; charset=utf-8')
   tv(@Param('gameId') gameId:string):string {return tvPage(gameId);}
   @Get('admin') @Header('Content-Type','text/html; charset=utf-8')
