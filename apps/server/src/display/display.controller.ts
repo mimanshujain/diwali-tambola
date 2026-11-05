@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Headers, Param } from '@nestjs/common';
+import { Controller, Get, Header, Headers, Param, Redirect } from '@nestjs/common';
 import QRCode from 'qrcode';
 import { DisplayService } from './display.service.js';
 import { adminPage, homeAdminPage, tvPage } from './pages.js';
@@ -15,6 +15,12 @@ export class DisplayController {
   @Header('Content-Type', 'application/javascript; charset=utf-8')
   @Header('Cache-Control', 'no-store')
   partyClient(): string { return PARTY_CLIENT_JS; }
+  @Get('g/:code')
+  @Redirect(undefined, 302)
+  async joinByCode(@Param('code') code: string): Promise<{url:string}> {
+    const id = await this.display.resolveJoinCode(code);
+    return {url: '/join/'+encodeURIComponent(id)};
+  }
   @Get('tv/:gameId') @Header('Content-Type','text/html; charset=utf-8')
   tv(@Param('gameId') gameId:string):string {return tvPage(gameId);}
   @Get('admin') @Header('Content-Type','text/html; charset=utf-8')
@@ -27,8 +33,9 @@ export class DisplayController {
     // Don't allow an untrusted Host header to put an external phishing URL in the TV QR.
     const host=rawHost??'';
     if(!/^(?:[\da-zA-Z.-]+)(?::\d{1,5})?$/.test(host))throw new Error('Invalid request host');
-    await this.display.snapshot(id); // also validates game ID and existence
-    return QRCode.toString('http://'+host+'/join/'+encodeURIComponent(id),
+    const snapshot = await this.display.snapshot(id); // validates UUID and game existence
+    const game = snapshot.game as {joinCode:string};
+    return QRCode.toString('http://'+host+'/g/'+encodeURIComponent(game.joinCode),
       {type:'svg',margin:2,width:280,errorCorrectionLevel:'M'});
   }
   @Get('games/:gameId/display') snapshot(@Param('gameId') id:string){return this.display.snapshot(id);}
