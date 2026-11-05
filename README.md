@@ -103,3 +103,28 @@ Sudden-death mini-rounds and Second Full House. See docs/MILESTONE_4B.md.
 ## Milestones 5 and 6
 
 Lucky Strike, the TV screen, player UI, and admin UI are documented in [docs/MILESTONE_5_6.md](docs/MILESTONE_5_6.md).
+# Diwali Tambola — Documentation Guide
+
+A LAN-hosted Indian Tambola experience running on a Raspberry Pi with a NestJS API, PostgreSQL and browser-based TV, player and admin views.
+
+## Start in two commands
+
+```bash
+cd ~/projects/diwali-tambola
+sudo docker compose up -d --build --wait
+curl -fsS http://localhost:3000/health/ready
+```
+
+Find the Pi's address with `hostname -I`. On the same trusted Wi-Fi, open `http://PI_IP:3000/admin`, create a game, and use the game ID at `http://PI_IP:3000/tv/GAME_ID` and `http://PI_IP:3000/join/GAME_ID`.
+
+## Documentation
+
+- [Getting started](docs/GETTING_STARTED.md)
+- [Gameplay and rules](docs/GAME_RULES.md)
+- [Operator guide](docs/OPERATIONS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development and tests](docs/DEVELOPMENT.md)
+- [Security](docs/SECURITY.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+
+> These guides document the project as developed through M7. Confirm any endpoint or configuration against the deployed source before treating it as a stable public contract.
