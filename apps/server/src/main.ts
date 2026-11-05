@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { Server } from 'socket.io';
 import { LiveService } from './live/live.service.js';
+import { lanHardening, adminRateLimit } from './security/lan-hardening.js';
 import type { IncomingMessage } from 'node:http';
 
 async function bootstrap(): Promise<void> {
@@ -11,6 +12,8 @@ async function bootstrap(): Promise<void> {
   });
 
   app.enableShutdownHooks();
+  app.use(lanHardening);
+  app.use(adminRateLimit);
   const io = new Server(app.getHttpServer(), {
     path: '/socket.io', serveClient: true,
     transports: ['websocket', 'polling'],
