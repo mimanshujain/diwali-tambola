@@ -17,3 +17,26 @@ test('first eligibility sequence is stable despite later calls', () => {
   assert.equal(eligibleAtSequence(grid,'TOP_LINE',[82,1,13,22,42,62,90]),6);
   assert.equal(eligibleAtSequence(grid,'TOP_LINE',[82,1,13,22,42]),null);
 });
+test('early seven and ten ignore unrelated calls and require their exact threshold', () => {
+  const ticket=grid.flat().filter((n):n is number=>n!==null);
+  for(const [rule,count] of [['EARLY_SEVEN',7],['EARLY_TEN',10]] as const){
+    assert.equal(isEligible(grid,rule,new Set([90,...ticket.slice(0,count-1)])),false);
+    assert.equal(isEligible(grid,rule,new Set(ticket.slice(0,count))),true);
+    assert.equal(eligibleAtSequence(grid,rule,[90,...ticket]),count+1);
+  }
+});
+test('two lines means complete rows, not any ten ticket numbers', () => {
+  const numbers=(rows:Grid)=>rows.flat().filter((n):n is number=>n!==null);
+  assert.equal(isEligible(grid,'TWO_LINES',new Set(numbers(grid.slice(0,2)))),true);
+  assert.equal(isEligible(grid,'TWO_LINES',new Set(numbers(grid).slice(3,13))),false);
+});
+test('parity prizes need every matching number and never award an empty set', () => {
+  const ticket=grid.flat().filter((n):n is number=>n!==null);
+  for(const [rule,parity] of [['ALL_ODD',1],['ALL_EVEN',0]] as const){
+    const required=ticket.filter(n=>n%2===parity);
+    assert.equal(isEligible(grid,rule,new Set(required)),true);
+    assert.equal(isEligible(grid,rule,new Set(required.slice(1))),false);
+    const absent=grid.map(row=>row.map(n=>n===null?null:n%2===parity?n+1:n));
+    assert.equal(isEligible(absent,rule,new Set(ticket)),false);
+  }
+});

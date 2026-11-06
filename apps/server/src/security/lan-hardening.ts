@@ -1,3 +1,4 @@
+import { assertAdmin } from './admin.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /** Small LAN-only guard. It does not replace TLS, network isolation or authentication. */
@@ -12,14 +13,16 @@ export function lanHardening(req: IncomingMessage, res: ServerResponse, next: ()
   next();
 }
 
-/** Constrains sustained online admin-key guessing on one local Node process.
- * Restricts only protected game admin routes, not game draws, guests or TV.
- * True distributed protection requires a reverse proxy and TLS.
- */
+/** Constrains sustained online admin-key guessing on one local Node process. */
 const attempts = new Map<string,{start:number,count:number}>();
 export function adminRateLimit(req: IncomingMessage,res: ServerResponse,next: () => void):void {
   const path = (req.url ?? '').split('?')[0];
-  if (!/^\/games\/[^/]+\/admin(?:\/|$)/.test(path)) {next();return;}
+  const protectedPath = /^\/games\/[^/]+\/admin(?:\/|$)/.test(path) ||
+    (path === '/games' && ['GET','POST'].includes(req.method ?? '')) ||
+    (req.method === 'POST' && /^\/games\/[^/]+\/(?:start|pause|resume|calls\/manual|tickets)\/?$/.test(path));
+  if (!protectedPath && req.headers['x-admin-key'] === undefined) {next();return;}
+  // A valid host key must not be locked out by live refreshes or emergency controls.
+  try { const key=req.headers['x-admin-key'];assertAdmin(typeof key==='string'?key:undefined);next();return; } catch { /* Rate-limit invalid credentials below. */ }
   const ip = req.socket.remoteAddress ?? 'unknown';
   const now=Date.now();
   let state=attempts.get(ip);

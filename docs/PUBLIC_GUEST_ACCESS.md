@@ -58,6 +58,11 @@ PUBLIC_GUEST_ORIGIN=https://play.example.com
 CLOUDFLARE_TUNNEL_TOKEN=<token from Cloudflare Dashboard>
 ```
 
+When set, the public guest origin is passed to the API even if it is started
+with the base Compose file alone. The public override is still required to
+start the gateway and tunnel; advertising the public origin does not start
+them. Changes to `.env` take effect only after the API container is recreated.
+
 Keep the token private. Cloudflare says anyone holding a tunnel token can run
 a connector. Ensure `.env` is gitignored and file permissions are restrictive
 (`chmod 600 .env`). Do not paste it in issue reports or chat.
@@ -156,9 +161,23 @@ necessary.
 - Public 404 for all pages: verify the allowed routes and exact path spelling.
 - Browser shows no live updates: check `/socket.io/socket.io.js`, WebSocket
   upgrades, and client retry. Polling remains the fallback.
-- QR still shows LAN IP: check `PUBLIC_GUEST_ORIGIN` in `docker compose
-  config` (do not paste the output because it includes secrets), rebuild API
-  using both Compose files, and reload the TV.
+- QR still shows localhost or a LAN IP: check the value in the running API
+  without printing other environment variables:
+
+  ```bash
+  sudo docker compose -f compose.yaml -f compose.public.yaml exec -T api \
+    node -p "process.env.PUBLIC_GUEST_ORIGIN || '(not set)'"
+  ```
+
+  At a safe time, recreate the API with both Compose files and restart the
+  gateway so it resolves the new API address. This interrupts the API and
+  running games may need to be resumed by the host; it does not restart the
+  database. Then reload the TV and scan the QR with a phone.
+
+  ```bash
+  sudo docker compose -f compose.yaml -f compose.public.yaml up -d --no-deps --no-build api
+  sudo docker compose -f compose.yaml -f compose.public.yaml restart guest-gateway
+  ```
 - Admin should *never* be reachable via the public hostname, even if the admin
   key is known. Stop the tunnel immediately if the admin screen or controls
   are reachable.

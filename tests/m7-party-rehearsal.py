@@ -32,8 +32,9 @@ print('[2/5] Create one isolated 30-player test game',flush=True)
 gid=call('POST','/games',{'name':'M7 Rehearsal '+str(uuid.uuid4())[:8],'intervalSeconds':3600},admin)['id']
 players=[]
 for i in range(30):
-    p=call('POST',f'/games/{gid}/players/register',{'name':f'Rehearsal {i+1:02d}','mobile':f'1555{1000000+i:07d}','deviceId':str(uuid.uuid4())})
+    p=call('POST',f'/games/{gid}/players/register',{'name':f'Rehearsal {i+1:02d}','deviceId':str(uuid.uuid4())})
     players.append(p)
+    call('POST',f"/games/{gid}/admin/players/{p['player']['id']}/approve",headers=admin)
     call('POST',f'/games/{gid}/players/me/submit',headers={'Authorization':'Bearer '+p['token']})
     if (i+1)%10==0:print(f' Registered {i+1}/30',flush=True)
 view=call('GET',f'/games/{gid}/display')

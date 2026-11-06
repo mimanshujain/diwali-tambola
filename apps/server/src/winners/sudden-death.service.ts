@@ -23,6 +23,7 @@ export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SuddenDeathService.name);
   private timer: ReturnType<typeof setInterval> | undefined;
   private ticking = false;
+  private lastCheckpointAt = 0;
   constructor(private readonly db: DatabaseService) {}
 
   async onModuleInit(): Promise<void> {
@@ -33,7 +34,11 @@ export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
     this.timer = setInterval(() => void this.tick(), 1000);
     this.timer.unref?.();
   }
-  onModuleDestroy(): void { if (this.timer) clearInterval(this.timer); }
+  async onModuleDestroy(): Promise<void> {
+    if (this.timer) clearInterval(this.timer);
+    await this.db.query(`UPDATE sudden_death_rounds SET status='PAUSED',next_call_at=NULL,
+      paused_remaining_seconds=GREATEST(0,CEIL(EXTRACT(EPOCH FROM(next_call_at-NOW()))))::int WHERE status='RUNNING'`);
+  }
 
   static async create(client: PoolClient, gameId: string, categoryId: string,
     intervalSeconds: number, ticketSize: number,
@@ -65,9 +70,11 @@ export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
     if (!isUuid(gameId) || !isUuid(categoryId)) throw new BadRequestException('Invalid UUID');
     await this.db.transaction(async client => {
       // Same lock order as settlement: game -> round. Prevent admin/scheduler races.
-      const game=await client.query<{status:string}>('SELECT status FROM games WHERE id=$1 FOR UPDATE',[gameId]);
+      const game=await client.query<{status:string;emergency_stopped:boolean;ended_by_admin:boolean;review_claim_id:string|null}>('SELECT status,emergency_stopped,ended_by_admin,review_claim_id FROM games WHERE id=$1 FOR UPDATE',[gameId]);
       if(!game.rows[0])throw new NotFoundException('Game not found');
+      if(game.rows[0].emergency_stopped || game.rows[0].ended_by_admin) throw new ConflictException('Game has been stopped.');
       if(!['PAUSED','COMPLETED'].includes(game.rows[0].status))throw new ConflictException('Pause main game before running tie-break');
+      if(action==='start' && game.rows[0].review_claim_id)throw new ConflictException('Finish the claim review before starting a tie-break');
       const r=await client.query<Round>('SELECT * FROM sudden_death_rounds WHERE game_id=$1 AND category_id=$2 FOR UPDATE',[gameId,categoryId]);
       const round=r.rows[0]; if(!round)throw new NotFoundException('Sudden-death round not found');
       if(action==='start') {
@@ -86,6 +93,11 @@ export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
     if(this.ticking)return;
     this.ticking=true;
     try {
+      if(Date.now()-this.lastCheckpointAt>=5000){
+        await this.db.query(`UPDATE sudden_death_rounds SET paused_remaining_seconds=
+          GREATEST(0,CEIL(EXTRACT(EPOCH FROM(next_call_at-NOW()))))::int WHERE status='RUNNING'`);
+        this.lastCheckpointAt=Date.now();
+      }
       const due=await this.db.query<{id:string;game_id:string}>('SELECT id,game_id FROM sudden_death_rounds WHERE status=$1 AND next_call_at<=NOW() ORDER BY next_call_at LIMIT 10',['RUNNING']);
       for(const round of due.rows) {
         try { await this.draw(round.game_id,round.id); }
@@ -97,8 +109,8 @@ export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
 
   private async draw(gameId:string,roundId:string):Promise<void> {
     await this.db.transaction(async client=>{
-      const game=await client.query<{status:string}>('SELECT status FROM games WHERE id=$1 FOR UPDATE',[gameId]);
-      if(!game.rows[0] || !['PAUSED','COMPLETED'].includes(game.rows[0].status))return;
+      const game=await client.query<{status:string;emergency_stopped:boolean;ended_by_admin:boolean}>('SELECT status,emergency_stopped,ended_by_admin FROM games WHERE id=$1 FOR UPDATE',[gameId]);
+      if(!game.rows[0] || game.rows[0].emergency_stopped || game.rows[0].ended_by_admin || !['PAUSED','COMPLETED'].includes(game.rows[0].status))return;
       const rounds=await client.query<Round>('SELECT * FROM sudden_death_rounds WHERE id=$1 AND game_id=$2 FOR UPDATE',[roundId,gameId]);
       const round=rounds.rows[0];
       if(!round || round.status!=='RUNNING')return;

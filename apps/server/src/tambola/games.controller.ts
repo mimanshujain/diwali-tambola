@@ -12,6 +12,23 @@ export class GamesController {
     return this.tambola.createGame(body ?? {});
   }
 
+  @Get()
+  listGames(@Headers('x-admin-key') key?:string) { assertAdmin(key);return this.tambola.listGames(); }
+  @Post(':gameId/admin/stop')
+  stop(@Param('gameId') id:string,@Headers('x-admin-key') key?:string) {assertAdmin(key);return this.tambola.stopGame(id,'stop');}
+  @Post(':gameId/admin/release-stop')
+  release(@Param('gameId') id:string,@Headers('x-admin-key') key?:string) {assertAdmin(key);return this.tambola.stopGame(id,'release');}
+  @Post(':gameId/admin/end')
+  end(@Param('gameId') id:string,@Headers('x-admin-key') key?:string) {assertAdmin(key);return this.tambola.stopGame(id,'end');}
+  @Post(':gameId/admin/timer')
+  timer(@Param('gameId') id:string,@Headers('x-admin-key') key:string|undefined,@Body() body:{seconds?:unknown;intervalSeconds?:unknown}) {assertAdmin(key);return this.tambola.setTimer(id,body??{});}
+  @Post(':gameId/admin/call-next')
+  next(@Param('gameId') id:string,@Headers('x-admin-key') key:string|undefined,@Body() body:{expectedSequence?:unknown}) {assertAdmin(key);return this.tambola.callNextNow(id,body?.expectedSequence);}
+  @Get(':gameId/admin/audit')
+  audit(@Param('gameId') id:string,@Headers('x-admin-key') key?:string) {assertAdmin(key);return this.tambola.audit(id);}
+  @Get(':gameId/admin/ticket-conflicts')
+  conflicts(@Param('gameId') id:string,@Headers('x-admin-key') key?:string) {assertAdmin(key);return this.tambola.ticketConflicts(id);}
+
   @Get(':gameId')
   getGame(@Param('gameId') gameId: string) {
     return this.tambola.getGame(gameId);

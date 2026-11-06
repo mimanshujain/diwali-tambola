@@ -1,58 +1,41 @@
-/** Browser-only enhancements. No external assets, no dependencies, no game state mutation. */
 export const PARTY_CLIENT_JS=String.raw`
 (()=>{
-const route=location.pathname;
-const isTV=/^\/tv\/[^/]+$/.test(route);
-const isAdmin=/^\/admin\/[^/]+$/.test(route);
-if(!isTV&&!isAdmin)return;
+if(!/^\/tv\/[^/]+$/.test(location.pathname))return;
 const css=document.createElement('style');css.textContent=
 '@keyframes partyPop{from{opacity:0;transform:scale(.75)}to{opacity:1;transform:scale(1)}}'+
 '@keyframes numberGlow{0%{filter:brightness(1.9);transform:scale(1.07)}100%{filter:brightness(1);transform:scale(1)}}'+
 '.party-announce{position:fixed;z-index:1000;inset:5% 9%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:3vw;border:4px solid #ffe6a3;border-radius:34px;background:linear-gradient(130deg,#242c58,#56274f);box-shadow:0 0 0 200vmax #000a;color:white;animation:partyPop .4s ease-out;pointer-events:none}'+
 '.party-announce strong{font-size:clamp(25px,5vw,78px)}.party-announce p{font-size:clamp(19px,3vw,42px);color:#ffe5a8}'+
 '.party-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px}.party-toolbar button{font-size:14px}'+
+'.spotify-panel{position:fixed;z-index:1300;right:2vw;top:10vh;width:min(460px,94vw);padding:20px;border:1px solid #ddb56e;border-radius:18px;background:#1f233e;box-shadow:0 12px 40px #000b}.spotify-panel input{width:100%;margin:8px 0}.spotify-panel iframe{width:100%;height:160px;border:0;border-radius:12px;margin-top:12px}.spotify-panel[hidden]{display:none}'+
 '@media(prefers-reduced-motion:reduce){.party-announce,.party-number{animation:none!important}}'+
-'@media print{.party-announce,.party-toolbar{display:none!important}}';
+'@media print{.party-announce,.party-toolbar,.spotify-panel{display:none!important}}';
 document.head.appendChild(css);
-const toolbar=document.createElement('div');toolbar.className='party-toolbar no-print';
-const b=(txt,fn)=>{const x=document.createElement('button');x.type='button';x.className='ghost';x.textContent=txt;x.addEventListener('click',fn);toolbar.appendChild(x);return x;};
-let sound=false;let ctx;
-function chime(){if(!sound)return;try{ctx??=new (window.AudioContext||window.webkitAudioContext)();
-const now=ctx.currentTime;for(const [i,n] of [523.25,659.25,783.99].entries()){
-const osc=ctx.createOscillator(),gain=ctx.createGain();osc.type='sine';osc.frequency.value=n;gain.gain.setValueAtTime(0,now+i*.14);gain.gain.linearRampToValueAtTime(.06,now+i*.14+.02);gain.gain.exponentialRampToValueAtTime(.001,now+i*.14+.33);osc.connect(gain);gain.connect(ctx.destination);osc.start(now+i*.14);osc.stop(now+i*.14+.34);
-}}catch{sound=false;}}
-if(isTV){
-const spot=document.querySelector('header');
-const toggle=b('Sound off',()=>{sound=!sound;toggle.textContent='Sound '+(sound?'on':'off');if(sound)chime();});
-b('Fullscreen',()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.().catch(()=>{});else document.exitFullscreen?.().catch(()=>{});});
-spot?.appendChild(toolbar);
-let initialized=false, oldWinnerTexts=new Set(), lastNumber='—', overlayTimer;
+const toolbar=document.createElement('div');toolbar.className='party-toolbar no-print';document.querySelector('header')?.appendChild(toolbar);
+const button=(text,handler)=>{const node=document.createElement('button');node.type='button';node.className='ghost';node.textContent=text;node.addEventListener('click',handler);toolbar.appendChild(node);return node;};
+const params=new URLSearchParams(location.search);let desiredSound=params.get('sound')==='1',sound=false,context,hindi=params.get('hindi')!=='0';
+const soundButton=button('',()=>{if(sound){desiredSound=false;sound=false;window.speechSynthesis?.cancel();updateSound();}else enableSound();});
+const hindiButton=button('',()=>{hindi=!hindi;hindiButton.textContent='Hindi voice '+(hindi?'on':'off');if(!hindi)window.speechSynthesis?.cancel();});hindiButton.textContent='Hindi voice '+(hindi?'on':'off');
+button('Fullscreen',()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.().catch(()=>{});else document.exitFullscreen?.().catch(()=>{});});
+function updateSound(){soundButton.textContent=sound?'Sound on':desiredSound?'Press OK for sound':'Sound off · press OK';}
+function enableSound(){desiredSound=true;try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio){soundButton.textContent='Audio unavailable';return;}context??=new Audio();context.onstatechange=()=>{sound=desiredSound&&context.state==='running';updateSound();};const resumed=context.resume();if(resumed?.then)resumed.then(()=>{sound=desiredSound&&context.state==='running';updateSound();if(sound)chime();}).catch(()=>updateSound());sound=context.state==='running';updateSound();}catch{sound=false;updateSound();}}
+function chime(){if(!sound||!context)return;try{const now=context.currentTime;for(const [index,note] of [523.25,659.25,783.99].entries()){const oscillator=context.createOscillator(),gain=context.createGain();oscillator.type='sine';oscillator.frequency.value=note;gain.gain.setValueAtTime(0,now+index*.14);gain.gain.linearRampToValueAtTime(.06,now+index*.14+.02);gain.gain.exponentialRampToValueAtTime(.001,now+index*.14+.33);oscillator.connect(gain);gain.connect(context.destination);oscillator.start(now+index*.14);oscillator.stop(now+index*.14+.34);}}catch{sound=false;updateSound();}}
+updateSound();if(desiredSound)enableSound();
+document.addEventListener('keydown',event=>{if(!sound&&['Enter',' '].includes(event.key)&&!['INPUT','TEXTAREA'].includes(event.target?.tagName)){event.preventDefault();enableSound();}});
+const numbers=['','एक','दो','तीन','चार','पाँच','छह','सात','आठ','नौ','दस','ग्यारह','बारह','तेरह','चौदह','पंद्रह','सोलह','सत्रह','अठारह','उन्नीस','बीस','इक्कीस','बाईस','तेईस','चौबीस','पच्चीस','छब्बीस','सत्ताईस','अट्ठाईस','उनतीस','तीस','इकतीस','बत्तीस','तैंतीस','चौंतीस','पैंतीस','छत्तीस','सैंतीस','अड़तीस','उनतालीस','चालीस','इकतालीस','बयालीस','तैंतालीस','चवालीस','पैंतालीस','छियालीस','सैंतालीस','अड़तालीस','उनचास','पचास','इक्यावन','बावन','तिरपन','चौवन','पचपन','छप्पन','सत्तावन','अट्ठावन','उनसठ','साठ','इकसठ','बासठ','तिरसठ','चौंसठ','पैंसठ','छियासठ','सड़सठ','अड़सठ','उनहत्तर','सत्तर','इकहत्तर','बहत्तर','तिहत्तर','चौहत्तर','पचहत्तर','छिहत्तर','सतहत्तर','अठहत्तर','उन्यासी','अस्सी','इक्यासी','बयासी','तिरासी','चौरासी','पचासी','छियासी','सत्तासी','अट्ठासी','नवासी','नब्बे'];
+const special={1:'एक अकेला, सबसे पहला',2:'एक और एक, दो',7:'भाग्यशाली सात',11:'दो डंडे, ग्यारह',22:'दो बत्तखें, बाईस',44:'चोर चोर, चवालीस',55:'दो पंजे, पचपन',66:'दो छक्के, छियासठ',77:'दो सात, सतहत्तर',88:'दो अठन्नी, अट्ठासी',90:'नब्बे पूरे, खेल में खुशियाँ भरपूर'};
+function announce(number){if(!sound||!hindi||!window.speechSynthesis||!window.SpeechSynthesisUtterance||!numbers[number])return;try{window.speechSynthesis.cancel();const words=special[number]||'अगला नंबर, '+numbers[number];const speech=new SpeechSynthesisUtterance(words+'। नंबर '+numbers[number]+'। अपना टिकट देखिए!');speech.lang='hi-IN';const voice=window.speechSynthesis.getVoices().find(item=>/^hi(?:-|_)/i.test(item.lang));if(voice)speech.voice=voice;window.speechSynthesis.speak(speech);}catch{}}
+const music=document.createElement('section');music.className='spotify-panel';music.hidden=true;music.setAttribute('aria-label','Spotify music');
+const heading=document.createElement('h2');heading.textContent='Spotify music';const instructions=document.createElement('p');instructions.textContent='Paste a Spotify playlist, album or track link. Internet access and playback in Spotify are required.';
+const input=document.createElement('input');input.placeholder='https://open.spotify.com/playlist/…';input.setAttribute('aria-label','Spotify link');const feedback=document.createElement('p');feedback.setAttribute('role','status');const actions=document.createElement('div');actions.className='row';
+const load=document.createElement('button');load.type='button';load.textContent='Load player';const close=document.createElement('button');close.type='button';close.className='ghost';close.textContent='Close';const stop=document.createElement('button');stop.type='button';stop.className='ghost';stop.textContent='Stop music';actions.append(load,close,stop);music.append(heading,instructions,input,actions,feedback);document.body.append(music);
+button('Spotify',()=>{music.hidden=false;input.focus();});close.onclick=()=>{music.hidden=true;};stop.onclick=()=>{music.querySelector('iframe')?.remove();feedback.textContent='Music stopped.';};
+load.onclick=()=>{try{const url=new URL(input.value.trim()),match=/^\/(playlist|album|track|artist|show|episode)\/([A-Za-z0-9]{22})\/?$/.exec(url.pathname);if(url.protocol!=='https:'||url.hostname!=='open.spotify.com'||!match)throw Error('Paste a Spotify playlist, album or track link.');const frame=document.createElement('iframe');frame.title='Spotify player';frame.src='https://open.spotify.com/embed/'+match[1]+'/'+match[2];frame.allow='autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';frame.referrerPolicy='no-referrer';music.querySelector('iframe')?.remove();music.append(frame);feedback.textContent='Press play in Spotify. Playback availability depends on your Spotify account.';}catch(error){feedback.textContent=error.message;}};
+let initialized=false,oldWinnerTexts=new Set(),lastNumber='—',overlayTimer;
 const celebrate=(title,message)=>{document.querySelector('.party-announce')?.remove();const box=document.createElement('div');box.className='party-announce';box.setAttribute('role','status');const heading=document.createElement('strong');heading.textContent=title;const subtitle=document.createElement('p');subtitle.textContent=message;box.append(heading,subtitle);document.body.appendChild(box);chime();clearTimeout(overlayTimer);overlayTimer=setTimeout(()=>box.remove(),6000);};
-function scan(){const latest=document.querySelector('#latest');const number=latest?.textContent?.trim()||'—';
-const winners=Array.from(document.querySelectorAll('#winners .item'),x=>x.textContent?.trim()||'').filter(Boolean);
-if(initialized){if(number!==lastNumber&&number!=='—'){latest?.classList.remove('party-number');void latest?.offsetWidth;latest?.classList.add('party-number');if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches)latest.style.animation='numberGlow .9s ease-out';chime();}
-for(const winner of winners){if(!oldWinnerTexts.has(winner)){celebrate('🎉 WINNER!',winner);break;}}}
-lastNumber=number;oldWinnerTexts=new Set(winners);initialized=true;}
-const target=document.querySelector('#winners');if(target)new MutationObserver(scan).observe(target,{childList:true,subtree:true});
-const numberTarget=document.querySelector('#latest');if(numberTarget)new MutationObserver(scan).observe(numberTarget,{childList:true,characterData:true,subtree:true});
-scan();
-}
-if(isAdmin){
-const top=document.querySelector('.wrap .panel');if(!top)return;
-const printAll=b('Print all submitted tickets',async()=>{
-const windowPrint=window.open('','_blank');if(!windowPrint){alert('Allow popups for this site');return;}
-const gameId=route.split('/').pop();const key=document.querySelector('#key')?.value||sessionStorage.getItem('tambola-admin-key')||'';
-const root='/games/'+encodeURIComponent(gameId);
-async function get(path){const r=await fetch(root+path,{headers:{'x-admin-key':key},cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status+' for '+path);return r.json();}
-try{
- const players=await get('/admin/players');const selected=players.filter(p=>p.ticketStatus==='SUBMITTED');
- if(!selected.length)throw Error('No submitted tickets to print');
- const doc=windowPrint.document;doc.open();doc.write('<!doctype html><html><head><title>Tambola Tickets</title><style>body{font-family:Arial,sans-serif}section{break-inside:avoid;page-break-inside:avoid;margin:14px 0 22px;padding:10px;border:1px solid #999}table{border-collapse:collapse}td{border:1px solid #222;text-align:center;width:40px;height:36px;font-weight:bold}h3{margin:4px 0 8px}@media print{button{display:none}}</style></head><body></body></html>');doc.close();
- for(const p of selected){const t=await get('/admin/players/'+encodeURIComponent(p.id)+'/ticket');const section=doc.createElement('section');const title=doc.createElement('h3');title.textContent=t.playerName+' · Ticket '+t.ticketNumber;section.append(title);
- const table=doc.createElement('table');for(const row of t.grid){const tr=doc.createElement('tr');for(const value of row){const td=doc.createElement('td');td.textContent=value===null?'':String(value);tr.append(td);}table.append(tr);}section.append(table);doc.body.append(section);}
- windowPrint.focus();windowPrint.print();
-}catch(e){windowPrint.close();alert('Bulk printing failed: '+String(e.message||e));}
-});
-printAll.title='Uses your browser print dialog, not direct CUPS printing';top.appendChild(toolbar);
-}
+window.addEventListener('tambola:qualified',event=>{if(event.detail?.message)celebrate('✨ AUTO-QUALIFIED',event.detail.message);});
+function scan(){const latest=document.querySelector('#latest'),number=latest?.textContent?.trim()||'—';const winners=Array.from(document.querySelectorAll('#winners .item'),item=>item.textContent?.trim()||'').filter(Boolean);
+ if(initialized){if(number!==lastNumber&&number!=='—'){latest?.classList.remove('party-number');void latest?.offsetWidth;latest?.classList.add('party-number');if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches)latest.style.animation='numberGlow .9s ease-out';chime();announce(Number(number));}for(const winner of winners){if(!oldWinnerTexts.has(winner)){celebrate('🎉 WINNER!',winner);break;}}}
+ lastNumber=number;oldWinnerTexts=new Set(winners);initialized=true;}
+const winnerTarget=document.querySelector('#winners');if(winnerTarget)new MutationObserver(scan).observe(winnerTarget,{childList:true,subtree:true});const numberTarget=document.querySelector('#latest');if(numberTarget)new MutationObserver(scan).observe(numberTarget,{childList:true,characterData:true,subtree:true});scan();
 })();`;
