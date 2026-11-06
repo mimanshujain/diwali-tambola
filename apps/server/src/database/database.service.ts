@@ -8,6 +8,7 @@ import { MILESTONE_5_MIGRATION } from './migrations/005_power.js';
 import { MILESTONE_7_MIGRATION } from './migrations/006_live_updates.js';
 import { PARTY_OPERATIONS_MIGRATION } from './migrations/008_party_operations.js';
 import { SHORT_GAME_CODE_MIGRATION } from './migrations/007_short_game_codes.js';
+import { PARTY_READINESS_MIGRATION } from './migrations/009_party_readiness.js';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
@@ -137,6 +138,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       if (!operations.rowCount) {
         await client.query(PARTY_OPERATIONS_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['008_party_operations']);
+      }
+      const readiness = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['009_party_readiness']);
+      if (!readiness.rowCount) {
+        await client.query(PARTY_READINESS_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['009_party_readiness']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');

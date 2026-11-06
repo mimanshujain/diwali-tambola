@@ -70,10 +70,11 @@ export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
     if (!isUuid(gameId) || !isUuid(categoryId)) throw new BadRequestException('Invalid UUID');
     await this.db.transaction(async client => {
       // Same lock order as settlement: game -> round. Prevent admin/scheduler races.
-      const game=await client.query<{status:string;emergency_stopped:boolean;ended_by_admin:boolean}>('SELECT status,emergency_stopped,ended_by_admin FROM games WHERE id=$1 FOR UPDATE',[gameId]);
+      const game=await client.query<{status:string;emergency_stopped:boolean;ended_by_admin:boolean;review_claim_id:string|null}>('SELECT status,emergency_stopped,ended_by_admin,review_claim_id FROM games WHERE id=$1 FOR UPDATE',[gameId]);
       if(!game.rows[0])throw new NotFoundException('Game not found');
       if(game.rows[0].emergency_stopped || game.rows[0].ended_by_admin) throw new ConflictException('Game has been stopped.');
       if(!['PAUSED','COMPLETED'].includes(game.rows[0].status))throw new ConflictException('Pause main game before running tie-break');
+      if(action==='start' && game.rows[0].review_claim_id)throw new ConflictException('Finish the claim review before starting a tie-break');
       const r=await client.query<Round>('SELECT * FROM sudden_death_rounds WHERE game_id=$1 AND category_id=$2 FOR UPDATE',[gameId,categoryId]);
       const round=r.rows[0]; if(!round)throw new NotFoundException('Sudden-death round not found');
       if(action==='start') {

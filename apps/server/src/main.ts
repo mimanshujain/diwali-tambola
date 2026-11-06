@@ -7,6 +7,9 @@ import { lanHardening, adminRateLimit } from './security/lan-hardening.js';
 import type { IncomingMessage } from 'node:http';
 
 async function bootstrap(): Promise<void> {
+  if ((process.env.ADMIN_TOKEN?.length ?? 0) < 32 || /^(replace|change|your|example)/i.test(process.env.ADMIN_TOKEN ?? '')) {
+    console.warn('ADMIN_TOKEN is missing or short. Set a random token of at least 32 characters before hosting.');
+  }
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log'],
   });

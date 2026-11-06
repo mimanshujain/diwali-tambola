@@ -16,7 +16,7 @@ export class DisplayService {
   async snapshot(gameIdRaw:string):Promise<Record<string,unknown>> {
     const id=uuid(gameIdRaw);
     const game=await this.tambola.getGame(id);
-    const [calls,players,categories,winners,powers,rounds]=await Promise.all([
+    const [calls,players,categories,winners,powers,rounds,eligibility,review]=await Promise.all([
       this.tambola.listCalls(id),
       this.db.query<PlayerDisplay>(`SELECT p.id,p.name,p.approved,t.ticket_number,t.status FROM players p
         JOIN tickets t ON t.player_id=p.id AND t.status IN ('ASSIGNED','SUBMITTED')
@@ -36,10 +36,24 @@ export class DisplayService {
       this.db.query<{category_name:string;status:string;draw_sequence:number}>(
         `SELECT c.id AS category_id,c.name AS category_name,r.status,r.draw_sequence FROM sudden_death_rounds r
          JOIN winning_categories c ON c.id=r.category_id WHERE r.game_id=$1 ORDER BY r.created_at DESC LIMIT 4`,[id]),
+      this.db.query<{category_id:string;category_name:string;player_id:string;name:string;sequence:number}>(
+        `SELECT c.id AS category_id,c.name AS category_name,p.id AS player_id,p.name,e.first_eligible_sequence AS sequence
+         FROM category_eligibility e JOIN winning_categories c ON c.id=e.category_id
+         JOIN players p ON p.id=e.player_id JOIN tickets t ON t.id=e.ticket_id
+         WHERE e.game_id=$1 AND c.active AND t.status='SUBMITTED'
+           AND NOT EXISTS (SELECT 1 FROM category_outcomes o WHERE o.category_id=c.id)
+           AND e.first_eligible_sequence=(SELECT MIN(first_eligible_sequence) FROM category_eligibility first
+             JOIN tickets ft ON ft.id=first.ticket_id AND ft.status='SUBMITTED' WHERE first.category_id=c.id)
+         ORDER BY e.first_eligible_sequence,c.name,p.name`,[id]),
+      this.db.query<{claim_id:string;name:string;category_name:string;ticket_number:number;grid:(number|null)[][];resume_after:boolean}>(
+        `SELECT wc.id AS claim_id,p.name,c.name AS category_name,t.ticket_number,t.grid,g.review_resume_after AS resume_after
+         FROM games g JOIN winner_claims wc ON wc.id=g.review_claim_id AND wc.game_id=g.id
+         JOIN players p ON p.id=wc.player_id JOIN winning_categories c ON c.id=wc.category_id
+         JOIN tickets t ON t.id=wc.ticket_id WHERE g.id=$1`,[id]),
     ]);
-    return {game,calls,guestOrigin:publicGuestOrigin(),players:players.rows.map(p=>({id:p.id,name:p.name,ticketNumber:p.ticket_number,
+    return {game,calls,serverTime:new Date().toISOString(),guestOrigin:publicGuestOrigin(),players:players.rows.map(p=>({id:p.id,name:p.name,ticketNumber:p.ticket_number,
       approved:p.approved,submitted:p.status==='SUBMITTED'})),categories:categories.rows,winners:winners.rows,
-      powerCalls:powers.rows,suddenDeath:rounds.rows};
+      powerCalls:powers.rows,suddenDeath:rounds.rows,eligibility:eligibility.rows,review:review.rows[0]??null};
   }
   /** Internet-facing display data. Deliberately excludes rosters, winners' names,
    * player identifiers, phone numbers, admin data and Lucky Strike identities. */
@@ -59,7 +73,7 @@ export class DisplayService {
         id: game.id, name: game.name, status: game.status,
         nextCallAt: game.nextCallAt, emergencyStopped: game.emergencyStopped, endedByAdmin: game.endedByAdmin,
       },
-      calls: calls.map(call => ({number: call.number, sequence: call.sequence})),
+      calls: calls.map(call => ({number: call.number, sequence: call.sequence})), serverTime:new Date().toISOString(),
       categories: categories.rows,
     };
   }

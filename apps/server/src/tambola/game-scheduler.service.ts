@@ -14,6 +14,8 @@ export class GameSchedulerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.database.query(`UPDATE games SET review_resume_after=false,recovered_at=NOW()
+      WHERE review_resume_after=true`);
     // A server restart never silently consumes the downtime as game time.
     // Games that were RUNNING are restored as PAUSED using the last 5-second checkpoint.
     const recovered = await this.database.query(

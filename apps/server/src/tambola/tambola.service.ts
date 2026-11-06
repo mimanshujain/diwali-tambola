@@ -33,6 +33,7 @@ interface GameRow extends QueryResultRow {
   emergency_stopped: boolean;
   ended_by_admin: boolean;
   recovered_at: Date | null;
+  review_claim_id: string | null;
 }
 
 interface CreateGameInput {
@@ -117,6 +118,8 @@ export class TambolaService {
         paused_remaining_seconds=CASE WHEN next_call_at IS NOT NULL THEN
           GREATEST(0,CEIL(EXTRACT(EPOCH FROM(next_call_at-NOW()))))::int ELSE paused_remaining_seconds END,
         next_call_at=NULL,scheduler_remaining_seconds=NULL,
+        review_resume_after=false,
+        review_claim_id=CASE WHEN $2 THEN NULL ELSE review_claim_id END,
         ended_by_admin=ended_by_admin OR $2,
         completed_at=CASE WHEN $2 THEN COALESCE(completed_at,NOW()) ELSE completed_at END WHERE id=$1`,
         [gameId, action === 'end']);
@@ -208,12 +211,16 @@ export class TambolaService {
         throw new ConflictException(`Cannot start a game in ${game.status} state.`);
       }
       if (game.emergency_stopped) throw new ConflictException('Release the emergency stop first.');
+      if (game.review_claim_id) throw new ConflictException('Finish or cancel the claim review before resuming.');
       const conflicts = await client.query(
         "SELECT 1 FROM tickets WHERE game_id=$1 AND status<>'REVOKED' GROUP BY numbers HAVING count(*)>1 LIMIT 1", [gameId]);
       if (conflicts.rowCount) throw new ConflictException('Duplicate tickets found. Resolve ticket conflicts before play.');
       if (!game.started_at) {
-        const pending = await client.query("SELECT 1 FROM tickets WHERE game_id=$1 AND status='ASSIGNED' LIMIT 1", [gameId]);
-        if (pending.rowCount) throw new ConflictException('All registered players must submit their tickets before starting.');
+        const pending = await client.query(`SELECT 1 FROM players p JOIN tickets t ON t.player_id=p.id
+          WHERE p.game_id=$1 AND NOT p.approved AND t.status IN ('ASSIGNED','SUBMITTED') LIMIT 1`, [gameId]);
+        if (pending.rowCount) throw new ConflictException('Approve or remove waiting players before starting.');
+        await client.query(`UPDATE tickets SET status='SUBMITTED',submitted_at=NOW()
+          WHERE game_id=$1 AND player_id IS NOT NULL AND status='ASSIGNED'`, [gameId]);
       }
       const tieBreak = await client.query('SELECT 1 FROM sudden_death_rounds WHERE game_id=$1 AND status<>$2 LIMIT 1',[gameId,'RESOLVED']);
       if(tieBreak.rowCount) throw new ConflictException('Finish the sudden-death round before starting the main game.');
@@ -229,7 +236,7 @@ export class TambolaService {
              started_at = COALESCE(started_at, NOW()), recovered_at = NULL,
              next_call_at = NOW() + ($2::integer * INTERVAL '1 second'),
              scheduler_remaining_seconds = $2,
-             paused_remaining_seconds = NULL
+             paused_remaining_seconds = NULL, review_resume_after = false
          WHERE id = $1::uuid`,
         [gameId, delaySeconds],
       );
@@ -343,7 +350,11 @@ export class TambolaService {
   ): Promise<CalledNumber> {
     this.assertUuid(gameId);
     const game = await this.lockGame(client, gameId);
-    if (game.status !== 'RUNNING' || game.emergency_stopped) throw new ConflictException('Resume the game before approving Lucky Strike.');
+    if (!['RUNNING','PAUSED'].includes(game.status) || game.emergency_stopped || game.ended_by_admin)
+      throw new ConflictException('Release the stop before approving Lucky Strike.');
+    if (game.review_claim_id) throw new ConflictException('Finish or cancel the claim review before calling Lucky Strike.');
+    if ((await client.query("SELECT 1 FROM sudden_death_rounds WHERE game_id=$1 AND status<>'RESOLVED' LIMIT 1",[gameId])).rowCount)
+      throw new ConflictException('Finish the tie-break before calling Lucky Strike.');
     const result = await this.performCallLocked(client, gameId, game, 'SUPERPOWER', number, powerRequestId);
     if (!result) throw new ConflictException('No numbers available for Lucky Strike.');
     return result;
@@ -396,8 +407,9 @@ export class TambolaService {
     } else {
       await client.query(`UPDATE games SET remaining_numbers=$2::smallint[],
         next_number_sequence=next_number_sequence+1,
-        next_call_at=NOW()+(interval_seconds * INTERVAL '1 second'),
-        scheduler_remaining_seconds=interval_seconds WHERE id=$1`,[gameId,after]);
+        next_call_at=CASE WHEN status='RUNNING' THEN NOW()+(interval_seconds * INTERVAL '1 second') ELSE NULL END,
+        scheduler_remaining_seconds=CASE WHEN status='RUNNING' THEN interval_seconds ELSE NULL END,
+        paused_remaining_seconds=CASE WHEN status='PAUSED' THEN interval_seconds ELSE NULL END WHERE id=$1`,[gameId,after]);
     }
     await WinnersService.snapshot(client, gameId, sequence);
     return {id,gameId,number,sequence,source,calledAt:saved.rows[0].called_at};
