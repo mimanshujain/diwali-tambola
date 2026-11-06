@@ -47,6 +47,7 @@ interface PlayerRow extends QueryResultRow {
   name: string;
   mobile: string | null;
   approved: boolean;
+  regeneration_count: number;
   created_at: Date;
 }
 interface TicketRow extends QueryResultRow {
@@ -83,7 +84,7 @@ export class PlayersService {
     try {
       const result = await this.database.transaction(async (client) => {
         const game = await this.lockGame(client, gameId);
-        if (game.status !== 'CREATED' || game.emergency_stopped) throw new ConflictException('Registration is closed after play starts or while stopped.');
+        if (game.status === 'COMPLETED' || game.emergency_stopped) throw new ConflictException('Registration is closed while the game is stopped or finished.');
         const found = await client.query(
           'SELECT id FROM players WHERE game_id = $1 AND (lower(name) = lower($2) OR device_id = $3)',
           [gameId, name, deviceId],
@@ -94,8 +95,9 @@ export class PlayersService {
            VALUES ($1,$2,$3,$4,$5,$6,false)`,
           [playerId, gameId, name, hashToken(recoveryCode), deviceId, hashToken(token)],
         );
-        const ticket = await this.createTicket(client, gameId, playerId, Number(game.next_ticket_number));
-        return { player: { id: playerId, name, approved:false }, ticket };
+        const late = game.started_at !== null;
+        const ticket = await this.createTicket(client, gameId, playerId, Number(game.next_ticket_number), undefined, late, game.next_number_sequence);
+        return { player: { id: playerId, name, approved:false }, ticket, rerollsRemaining: 3 };
       });
       return { ...result, token, recoveryCode };
     } catch (error: unknown) {
@@ -127,9 +129,14 @@ export class PlayersService {
     this.checkAdmin(key);const gameId=uuid(gameIdRaw,'gameId'),playerId=uuid(playerIdRaw,'playerId');
     await this.database.transaction(async client => {
       const game=await this.lockGame(client,gameId);
-      if(game.status!=='CREATED') throw new ConflictException('Approve players before play starts.');
-      const result=await client.query('UPDATE players SET approved=true WHERE id=$1 AND game_id=$2 RETURNING id',[playerId,gameId]);
-      if(!result.rowCount) throw new NotFoundException('Player not found');
+      if(game.status==='COMPLETED') throw new ConflictException('This game has finished.');
+      const current=await client.query<PlayerRow>('SELECT * FROM players WHERE id=$1 AND game_id=$2 FOR UPDATE',[playerId,gameId]);
+      if(!current.rows[0]) throw new NotFoundException('Player not found');
+      if(current.rows[0].approved) return;
+      await client.query('UPDATE players SET approved=true WHERE id=$1 AND game_id=$2',[playerId,gameId]);
+      if(game.started_at) await client.query(`UPDATE tickets SET status='SUBMITTED',submitted_at=COALESCE(submitted_at,NOW()),
+        eligible_from_sequence=GREATEST(eligible_from_sequence,$3)
+        WHERE game_id=$1 AND player_id=$2 AND status IN ('ASSIGNED','SUBMITTED')`,[gameId,playerId,game.next_number_sequence]);
       await client.query("INSERT INTO game_events(game_id,action,details) VALUES($1,'PLAYER_APPROVED',jsonb_build_object('playerId',$2::text))",[gameId,playerId]);
     });
     return {playerId,approved:true};
@@ -164,7 +171,8 @@ export class PlayersService {
     const gameId = uuid(gameIdRaw, 'gameId');
     const player = await this.requirePlayer(gameId, authorization);
     const ticket = await this.findActiveTicket(player.id);
-    return { player: { id: player.id, name: player.name, approved: player.approved }, ticket };
+    return { player: { id: player.id, name: player.name, approved: player.approved }, ticket,
+      rerollsRemaining: Math.max(0, 3 - player.regeneration_count) };
   }
 
   async submit(gameIdRaw: string, authorization?: string, expectedTicketId?: unknown): Promise<Record<string, unknown>> {
@@ -201,6 +209,8 @@ export class PlayersService {
       await client.query('SELECT id FROM players WHERE id = $1 FOR UPDATE', [player.id]);
       const old = await this.lockActiveTicket(client, player.id);
       if (old.status !== 'ASSIGNED') throw new ConflictException('Submitted tickets are immutable');
+      const allowance = await client.query('UPDATE players SET regeneration_count=regeneration_count+1 WHERE id=$1 AND regeneration_count<3 RETURNING id',[player.id]);
+      if (!allowance.rowCount) throw new ConflictException('You have used all three ticket recreations.');
       await client.query(`UPDATE tickets SET status = 'REVOKED' WHERE id = $1`, [old.id]);
       await this.createTicket(client, gameId, player.id, Number(game.next_ticket_number), old.id);
     });
@@ -261,16 +271,16 @@ export class PlayersService {
     const match = /^Bearer ([A-Za-z0-9_-]{40,100})$/.exec(auth ?? '');
     if (!match) throw new UnauthorizedException('Player token required');
     const result = await this.database.query<PlayerRow>(
-      'SELECT id,game_id,name,mobile,approved,created_at FROM players WHERE game_id=$1 AND token_hash=$2',
+      'SELECT id,game_id,name,mobile,approved,regeneration_count,created_at FROM players WHERE game_id=$1 AND token_hash=$2',
       [gameId, hashToken(match[1])],
     );
     if (!result.rows[0]) throw new UnauthorizedException('Unknown player token');
     return result.rows[0];
   }
 
-  private async lockGame(client: PoolClient, gameId: string): Promise<{ status: string; next_ticket_number: number; emergency_stopped: boolean }> {
-    const result = await client.query<{ status: string; next_ticket_number: number; emergency_stopped: boolean }>(
-      'SELECT status,next_ticket_number,emergency_stopped FROM games WHERE id=$1 FOR UPDATE', [gameId],
+  private async lockGame(client: PoolClient, gameId: string): Promise<{ status: string; next_ticket_number: number; next_number_sequence: number; started_at: Date | null; emergency_stopped: boolean }> {
+    const result = await client.query<{ status: string; next_ticket_number: number; next_number_sequence: number; started_at: Date | null; emergency_stopped: boolean }>(
+      'SELECT status,next_ticket_number,next_number_sequence,started_at,emergency_stopped FROM games WHERE id=$1 FOR UPDATE', [gameId],
     );
     if (!result.rows[0]) throw new NotFoundException('Game not found');
     return result.rows[0];
@@ -303,14 +313,16 @@ export class PlayersService {
 
   private async createTicket(
     client: PoolClient, gameId: string, playerId: string, ticketNumber: number, oldTicketId?: string,
+    submitImmediately = false, eligibleFromSequence = 1,
   ): Promise<Record<string, unknown>> {
     const {grid, numbers} = await uniqueTicket(client, gameId);
     const id = randomUUID();
     const result = await client.query<TicketRow>(
-      `INSERT INTO tickets (id,game_id,ticket_number,grid,numbers,status,player_id,reissued_from_id)
-       VALUES ($1,$2,$3,$4::jsonb,$5::smallint[],'ASSIGNED',$6,$7)
+      `INSERT INTO tickets (id,game_id,ticket_number,grid,numbers,status,player_id,reissued_from_id,submitted_at,eligible_from_sequence)
+       VALUES ($1,$2,$3,$4::jsonb,$5::smallint[],$8,$6,$7,CASE WHEN $8='SUBMITTED' THEN NOW() ELSE NULL END,$9)
        RETURNING *`,
-      [id,gameId,ticketNumber,JSON.stringify(grid),numbers,playerId,oldTicketId ?? null],
+      [id,gameId,ticketNumber,JSON.stringify(grid),numbers,playerId,oldTicketId ?? null,
+        submitImmediately ? 'SUBMITTED' : 'ASSIGNED', submitImmediately ? eligibleFromSequence : 1],
     );
     await client.query('UPDATE games SET next_ticket_number = next_ticket_number+1 WHERE id=$1', [gameId]);
     return this.toTicket(result.rows[0]);

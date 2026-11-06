@@ -58,7 +58,9 @@ export async function operations({base,key,query}){
  assert.deepEqual(await request(root+'/admin/ticket-conflicts',{admin:true}),[]);
  await request(root+'/admin/timer',{...admin,body:{seconds:240}});assert.equal((await request(root)).pausedRemainingSeconds,240);
  await request(root+'/start',admin);assert.ok(new Date((await request(root)).nextCallAt)-Date.now()>235000);
- await request(root+'/players/register',{method:'POST',body:{name:'Late Guest',deviceId:randomUUID()},status:409});
+ const late=await request(root+'/players/register',{method:'POST',body:{name:'Late Guest',deviceId:randomUUID()}});
+ assert.equal(late.ticket.status,'SUBMITTED');assert.equal(late.player.approved,false);
+ await request(root+'/admin/players/'+late.player.id+'/approve',admin);
  await request(root+'/admin/players/'+player.player.id+'/reissue',{...admin,body:{reason:'Late request'},status:409});
  await request(root+'/admin/categories',{...admin,body:{name:'Late prize',ruleType:'EARLY_TEN'},status:409});
  await request(root+'/admin/timer',{...admin,body:{seconds:77,intervalSeconds:90}});
@@ -71,7 +73,7 @@ export async function operations({base,key,query}){
  await request(root+'/admin/end',admin);assert.equal((await request(root)).endedByAdmin,true);
  await request(root+'/admin/release-stop',{...admin,status:409});await request(root+'/resume',{...admin,status:409});
  const events=await request(root+'/admin/audit',{admin:true});assert.ok(events.some(e=>e.action==='PLAYER_ACCESS_RESET'));assert.ok(!JSON.stringify(events).includes(reset.recoveryCode));
- const games=await request('/games',{admin:true});assert.ok(games.some(g=>g.id===game.id&&g.submittedCount===13));
+ const games=await request('/games',{admin:true});assert.ok(games.some(g=>g.id===game.id&&g.submittedCount===14));
  const lobby=await request('/games',{...admin,body:{name:'Lights, laughter & lucky numbers',intervalSeconds:3600}});
  return {game,lobby,player,request};
 }
@@ -87,12 +89,13 @@ export async function recoveryChecks({base,key,query,stop,start}){
  await request(root+'/admin/categories/'+early.id+'/resolve',admin);await request(root+'/resume',admin);
  const powerNumber=Array.from({length:90},(_,i)=>i+1).find(n=>!player.ticket.numbers.slice(0,5).includes(n));
  await request(root+'/players/me/power/request',{method:'POST',token:player.token,body:{number:powerNumber}});
+ assert.equal((await request(root)).status,'PAUSED');await request(root+'/resume',admin);
  // Make two genuinely tied full-house tickets in a second game.
  const tie=await request('/games',{...admin,body:{name:'Tie-break recovery test',intervalSeconds:3600}}),tieRoot='/games/'+tie.id;
  const tied=[];for(const name of ['Tie One','Tie Two'])tied.push(await request(tieRoot+'/players/register',{method:'POST',body:{name,deviceId:randomUUID()}}));
  let shared=tied[0].ticket.numbers.find(n=>tied[1].ticket.numbers.includes(n));
- for(let attempt=0;shared===undefined&&attempt<30;attempt++){
-  tied[1]={...tied[1],...await request(tieRoot+'/players/me/regenerate',{method:'POST',token:tied[1].token})};
+ for(let playerIndex=0;shared===undefined&&playerIndex<2;playerIndex++)for(let attempt=0;shared===undefined&&attempt<3;attempt++){
+  tied[playerIndex]={...tied[playerIndex],...await request(tieRoot+'/players/me/regenerate',{method:'POST',token:tied[playerIndex].token})};
   shared=tied[0].ticket.numbers.find(n=>tied[1].ticket.numbers.includes(n));
  }
  assert.notEqual(shared,undefined);
@@ -105,11 +108,20 @@ export async function recoveryChecks({base,key,query,stop,start}){
  const roundPath=tieRoot+'/admin/categories/'+house.id+'/sudden-death';await request(roundPath+'/start',admin);
  await request(tieRoot+'/admin/stop',admin);assert.equal((await request(roundPath,{admin:true})).status,'PAUSED');
  await request(roundPath+'/start',{...admin,status:409});await request(tieRoot+'/admin/release-stop',admin);await request(roundPath+'/start',admin);
+ const claimGame=await request('/games',{...admin,body:{name:'Claim pause recovery',intervalSeconds:120}}),claimRoot='/games/'+claimGame.id;
+ const claimant=await request(claimRoot+'/players/register',{method:'POST',body:{name:'Claim recovery',deviceId:randomUUID()}});
+ await request(claimRoot+'/admin/players/'+claimant.player.id+'/approve',admin);await request(claimRoot+'/start',admin);
+ for(const number of claimant.ticket.numbers.slice(0,5))await request(claimRoot+'/calls/manual',{...admin,body:{number}});
+ const claimCategory=(await request(claimRoot+'/categories')).find(category=>category.rule_type==='EARLY_FIVE');
+ const claim=await request(claimRoot+'/players/me/claims',{method:'POST',token:claimant.token,body:{categoryId:claimCategory.id}});
+ assert.equal((await request(claimRoot)).status,'PAUSED');
  const roundBefore=await request(roundPath,{admin:true});
  const before=await request(root+'/display');const ticketBefore=await request(root+'/players/me',{token:player.token});
  await new Promise(r=>setTimeout(r,6100));
  const checkpoint=(await query('SELECT scheduler_remaining_seconds FROM games WHERE id=$1',[game.id])).rows[0].scheduler_remaining_seconds;
  await stop('SIGKILL');await start();
+ await request(claimRoot+'/admin/claims/'+claim.id+'/review',admin);assert.equal((await request(claimRoot+'/display')).review.resume_after,false);
+ assert.equal((await request(claimRoot+'/admin/claims/'+claim.id+'/confirm',admin)).resumed,false);
  const roundAfter=await request(roundPath,{admin:true});assert.equal(roundAfter.status,'PAUSED');assert.deepEqual(roundAfter.entries,roundBefore.entries);assert.deepEqual(roundAfter.calls,roundBefore.calls);
  assert.equal((await request(root+'/players/me/power',{token:player.token})).status,'PENDING');
  const after=await request(root+'/display');assert.equal(after.game.status,'PAUSED');assert.ok(after.game.recoveredAt);assert.equal(after.game.pausedRemainingSeconds,checkpoint);

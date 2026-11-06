@@ -9,15 +9,15 @@ sudo docker compose up -d --build --wait
 curl -fsS http://localhost:3000/health/ready
 ```
 
-Open `http://PI_IP:3000/admin` on your trusted Wi-Fi and enter the configured admin key. Create or select a game, approve guests, configure prizes and start once all active tickets are submitted. The console provides a QR code and a short game-code TV URL such as `/tv/ABC234`.
+Open `http://PI_IP:3000/admin` on your trusted Wi-Fi and enter the configured admin key. Create or select a game, approve guests, configure prizes and start; approved draft tickets are submitted automatically. The console provides a short game-code TV URL such as `/tv/ABC234`.
 
 - Search and switch games; collapse console sections.
-- Name-only guest registration, host approval, draft recreation, confirmation before submission and private recovery codes.
+- Name-only registration, host approval, up to three draft recreations, late joins and private recovery codes.
 - Unique active ticket number sets within each game; submitted tickets stay fixed.
 - Scheduled and manual draws, one-click timing overrides, emergency stop and confirmed end-game control.
-- Custom prize categories, claims, shared prizes, sudden-death rounds and Lucky Strike.
-- A viewport-fitted TV board with optional sound and live updates.
-- One ticket per landscape 4 × 6 printed sheet.
+- Configurable prize categories, automatic eligibility announcements, claim review, shared prizes, sudden death and Lucky Strike.
+- TV lobby and live roster, vertical call order, claim review and results, with optional Hindi commentary and Spotify player.
+- Selectable ticket printing on A4, with up to three tickets per page.
 - Restart recovery to paused play, activity records and database backup/restore scripts.
 
 ## Public guests and private hosting
@@ -25,6 +25,8 @@ Open `http://PI_IP:3000/admin` on your trusted Wi-Fi and enter the configured ad
 For HTTPS guest access through Cloudflare Tunnel, use the opt-in `compose.public.yaml` configuration and the [public access guide](docs/PUBLIC_GUEST_ACCESS.md). Only the guest gateway should be published. Admin, TV, player rosters and host operations remain on the private LAN. Never expose port 3000 directly to the internet.
 
 The API applies migrations at startup and keeps data in the PostgreSQL volume. Back up before upgrades. Restarting containers preserves the volume; deleting it does not.
+
+Before hosting, replace the example `ADMIN_TOKEN` in `.env` with a private random value (for example, generate one with `openssl rand -hex 32`). Recreate the API container to apply it. Never share or commit the token.
 
 ## Documentation
 

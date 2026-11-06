@@ -56,16 +56,23 @@ Build first, then run the HTTP checks against a disposable running instance:
 npm run build
 node --test tests/tv-access.mjs
 ADMIN_TOKEN=YOUR_TEST_KEY TAMBOLA_URL=http://localhost:3000 node tests/party-operations.mjs
+ADMIN_TOKEN=YOUR_TEST_KEY TAMBOLA_URL=http://localhost:3000 node tests/party-readiness.mjs
 ```
 
-For a self-contained Linux rehearsal with an isolated database, API process and headless browser, install the test tools outside the project. These are not production dependencies:
+Check guest-origin forwarding through both Compose configurations without
+starting containers with `node --test tests/compose-guest-origin.mjs`.
+
+For a self-contained Linux rehearsal with an isolated database, API process and headless browser, install the test tools outside the project. These are not production dependencies. On a Raspberry Pi with system Chromium installed:
 
 ```bash
 npm install --prefix /tmp/tambola-test-tools \
-  embedded-postgres@18.6.0-beta.19 @sparticuz/chromium@153.0.0 playwright-core@1.64.1
-TAMBOLA_TEST_TOOLS=/tmp/tambola-test-tools TAMBOLA_LEGACY_TESTS=1 node tests/party-rehearsal.mjs
+  embedded-postgres@18.6.0-beta.19 playwright-core@1.64.1
+TAMBOLA_TEST_TOOLS=/tmp/tambola-test-tools TAMBOLA_CHROMIUM_PATH=/usr/bin/chromium \
+  TAMBOLA_LEGACY_TESTS=1 node tests/party-rehearsal.mjs
 ```
 
-This tests the legacy schema upgrade, concurrent ticket conflicts, identity approval/recovery, timer overrides, emergency stop, terminal end, prize configuration, phone confirmations, game navigation, TV fitting at 960×540/720p/1080p/4K, PDF page size, forced API termination, tie-break recovery, persisted winners/powers and graceful restart. It saves screenshots, a print PDF and server logs in a temporary directory printed at completion. The optional legacy suites add the 30-player, 25-live-client and Lucky Strike priority rehearsals.
+Adjust `TAMBOLA_CHROMIUM_PATH` if Chromium is installed elsewhere. On x86-64 Linux, you can instead install `@sparticuz/chromium@153.0.0` in the same test-tools directory and omit that variable; its bundled browser is not ARM64-compatible.
+
+This tests the legacy schema upgrade, concurrent ticket conflicts, identity approval/recovery, auto-submission, late-join fairness, claim review, timer overrides, emergency stop, prize configuration, phone confirmations, lobby/TV phases, live-update races, TV fitting at 960×540/720p/1080p/4K, PDF page size, forced API termination, tie-break recovery, persisted winners/powers and graceful restart. It saves screenshots, a print PDF and server logs in a temporary directory printed at completion. The optional legacy suites add the 30-player, 25-live-client and Lucky Strike priority rehearsals.
 
 The public guest workflow also tests the real Docker gateway, host operations and `tests/backup-rehearsal.mjs` against PostgreSQL 17. The backup rehearsal replaces its database: run it only in the disposable CI Compose stack.
