@@ -1,65 +1,49 @@
-/** All guest assets are bundled into the NestJS server: no CDN or extra port. */
-export function renderJoinPage(): string {
-  return String.raw`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Diwali Tambola · My ticket</title><style>
-:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color-scheme:dark;color:#fff4d9;background:#101722}
-*{box-sizing:border-box}body{margin:0;padding:18px;background:radial-gradient(circle at top left,#30415a,transparent 45%),#101722}
-main{max-width:620px;margin:0 auto}h1{color:#ffcb77;margin:5px 0}h2{font-size:20px}form,section{background:#1b293b;border:1px solid #465671;padding:18px;border-radius:16px;margin:16px 0}
-input,button{font:inherit;width:100%;padding:12px;border-radius:9px;margin:7px 0}input{background:#101b2a;color:#fff;border:1px solid #8a9ab0}
-button{border:0;background:#ffc267;color:#21180a;font-weight:bold;cursor:pointer}button:disabled{opacity:.5}button.secondary{background:#526780;color:#fff}
-#message{color:#ffc8b5;min-height:18px}.ticket{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:3px;margin:20px 0}
-.cell{aspect-ratio:1;display:grid;place-items:center;background:#f1eada;color:#161b22;font-weight:800;border-radius:5px;font-size:clamp(12px,3.5vw,22px)}
-.cell.empty{background:#374860}.cell.hit{background:#b8e7a2;color:#164221}.stats{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-small{color:#becbda}.badge{font-size:13px;border-radius:20px;background:#37475e;padding:5px 10px}.categories{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.categories button{font-size:13px}
-</style></head><body><main><h1>🪔 Diwali Tambola</h1><p id="gameName">Your game, your ticket.</p><p id="message" role="status"></p>
-<form id="register"><h2>Join the game</h2><label>Name<input id="name" autocomplete="name" maxlength="80" required></label>
-<label>Mobile number with country code<input id="mobile" type="tel" placeholder="15551234567" autocomplete="tel" required></label>
-<button>Get my ticket</button><small>One registration per phone number and browser. No SMS verification.</small></form>
-<section id="ticket-section" hidden><div class="stats"><h2 id="welcome"></h2><span class="badge" id="status"></span></div>
-<p id="ticket-code"></p><div class="ticket" id="ticket"></div><button id="submit">Submit ticket</button>
-<button id="regenerate" class="secondary">Try another ticket</button><small>Submitting locks the ticket. Save this browser to return later.</small></section>
-<section id="game-section" hidden><div class="stats"><h2>Called numbers</h2><span id="gameStatus" class="badge">—</span></div>
-<p id="lastCall">No calls yet</p><div id="callHistory" style="overflow-wrap:anywhere;color:#cfdae9"></div>
-<h2>Claim a prize</h2><div id="categories" class="categories"></div>
-<h2>✨ Lucky Strike</h2><p class="small" id="powerStatus">One lucky number per player. Ask the admin to approve.</p>
-<form id="powerForm"><label>Choose an uncalled number<input id="powerNumber" type="number" min="1" max="90" required></label>
-<button id="powerSubmit">Request Lucky Strike</button></form></section>
-</main><script>
-(function(){
-const id=location.pathname.split('/').pop();const root='/games/'+encodeURIComponent(id);const $=s=>document.querySelector(s);
-const tk='tambola-token-'+id, dk='tambola-device';let token=localStorage.getItem(tk);
-const msg=s=>$('#message').textContent=s||'';
-function uuid(){const b=new Uint8Array(16);crypto.getRandomValues(b);b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const s=Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20);}
-let deviceId=localStorage.getItem(dk);if(!deviceId){deviceId=uuid();localStorage.setItem(dk,deviceId);}
-async function req(path,method='GET',body){const r=await fetch(root+path,{method,cache:'no-store',headers:{'content-type':'application/json',...(token?{'authorization':'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined});
-const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(Array.isArray(d.message)?d.message.join(', '):d.message||'Request failed');return d;}
-let ticket=null,called=new Set();
-function show(data){ticket=data.ticket;$('#register').hidden=true;$('#ticket-section').hidden=false;$('#game-section').hidden=false;
-$('#welcome').textContent='Hi, '+data.player.name;$('#ticket-code').textContent=data.ticket.displayCode;
-const submitted=data.ticket.status==='SUBMITTED';$('#status').textContent=submitted?'Submitted ✓':'Review your ticket';
-$('#submit').hidden=submitted;$('#regenerate').hidden=submitted;
-renderTicket();msg('');}
-function renderTicket(){if(!ticket)return;$('#ticket').replaceChildren();for(const row of ticket.grid){for(const n of row){const cell=document.createElement('div');cell.className='cell'+(n===null?' empty':called.has(n)?' hit':'');cell.textContent=n===null?'':String(n);$('#ticket').appendChild(cell);}}}
-$('#register').onsubmit=async e=>{e.preventDefault();try{const d=await req('/players/register','POST',{name:$('#name').value,mobile:$('#mobile').value,deviceId});token=d.token;localStorage.setItem(tk,token);show(d);await refresh();}catch(err){msg(err.message);}};
-$('#submit').onclick=async()=>{try{show(await req('/players/me/submit','POST'));await refresh();}catch(e){msg(e.message);}};
-$('#regenerate').onclick=async()=>{try{show(await req('/players/me/regenerate','POST'));await refresh();}catch(e){msg(e.message);}};
-$('#powerForm').onsubmit=async e=>{e.preventDefault();try{const n=Number($('#powerNumber').value);const r=await req('/players/me/power/request','POST',{number:n});msg('Requested '+r.number+' — waiting for admin approval');await refresh();}catch(err){msg(err.message);}};
-async function refresh(){try{const [display,power]=await Promise.all([
- req('/guest-display'),token?req('/players/me/power'):Promise.resolve(null)]);const cat=display.categories;
- $('#gameName').textContent=display.game.name;$('#gameStatus').textContent=display.game.status;
- if(ticket)$('#regenerate').hidden=ticket.status==='SUBMITTED'||display.game.status!=='CREATED';
- called=new Set(display.calls.map(x=>x.number));renderTicket();
- const last=display.calls.at(-1);$('#lastCall').textContent=last?'Latest: '+last.number+' · Called '+display.calls.length+'/90':'No numbers called';
- $('#callHistory').textContent=display.calls.map(x=>x.number).join(' · ');
- const categories=$('#categories');categories.replaceChildren();for(const c of cat){if(!c.active||c.status==='RESOLVED')continue;
- const b=document.createElement('button');b.textContent=c.name;b.className='secondary';b.disabled=!ticket||ticket.status!=='SUBMITTED';
- b.onclick=async()=>{try{await req('/players/me/claims','POST',{categoryId:c.id});msg('Claim sent for '+c.name);}catch(e){msg(e.message);}};categories.appendChild(b);}
- if(power){$('#powerStatus').textContent=power.status==='USED'?'Lucky Strike used ✓':power.status==='PENDING'?'Request pending: '+(power.lastRequest?power.lastRequest.number:''): 'Choose one uncalled number for admin approval.';
- $('#powerSubmit').disabled=power.status!=='AVAILABLE'||display.game.status!=='RUNNING'||!ticket||ticket.status!=='SUBMITTED';}
-}catch(e){msg('Connection: '+e.message);}}
-if(token){req('/players/me').then(show).then(refresh).catch(e=>msg(e.message+' · Contact the admin if your registration cannot be restored.'));}
-refresh();setInterval(refresh,30000);window.addEventListener('tambola:changed',refresh);
-})();
-</script><script src="/socket.io/socket.io.js"></script><script src="/live/client.js"></script></body></html>`;
+import { theme } from '../display/theme.js';
+/** Guest UI is served locally, including every style and script. */
+export function renderJoinPage():string {
+ return String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diwali Tambola · Your ticket</title><style>${theme}
+ main{max-width:640px;margin:auto;padding:22px 16px 60px}.ticket{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;margin:20px 0}.cell{aspect-ratio:1;display:grid;place-items:center;background:#fff0d4;color:#402636;border-radius:6px;font-weight:800;font-size:clamp(14px,4vw,27px)}.cell.empty{background:#59334d}.cell.hit{background:#98e6c8;color:#153c2d}.ticket-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.categories{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.recovery-code{font:15px monospace;letter-spacing:.08em;overflow-wrap:anywhere;color:#ffe3a0}.guest-hero{padding:25px 0 12px}.guest-hero h1{font-size:40px}.guest-hero .brand{font-size:11px}form label{margin:14px 0}.badge{max-width:100%}button{white-space:normal}.storage-warning{font-size:12px;color:#ffbaba}
+ </style></head><body><main class="stack"><header class="guest-hero"><div class="brand">🪔 A LITTLE LUCK. A LOT OF LIGHT.</div><h1>Diwali Tambola</h1><p id="gameName" class="muted">Your evening. Your lucky ticket.</p></header>
+ <p id="message" class="notice" role="status" aria-live="polite"></p><p id="storage-warning" class="storage-warning" hidden>Your browser cannot save this session. Keep your recovery code before closing this page.</p>
+ <form id="register" class="panel"><div class="eyebrow">Come join the celebration</div><h2>What should we call you?</h2><label>Your name<input id="name" autocomplete="name" maxlength="80" placeholder="First and last name" required></label><p class="small">Get your ticket now; the host approves your name. Late tickets are locked immediately.</p><button id="register-button">Get my ticket →</button><p id="registration-help" class="small"></p></form>
+ <details id="restore-panel" class="panel"><summary>Already joined? Restore your ticket</summary><form id="restore" class="section-body"><label>Private recovery code<input id="recovery-input" autocomplete="off" spellcheck="false" required placeholder="Your 32-character recovery code"></label><button id="restore-button" class="ghost">Restore my ticket</button><p class="small">Changed phones or cleared your browser? Your ticket stays saved. If you lost the code, ask the host to reset access.</p></form></details>
+ <section id="ticket-section" class="panel" hidden><div class="row between"><div><div class="eyebrow">Your place in the celebration</div><h2 id="welcome"></h2></div><span id="status" class="badge"></span></div><p id="ticket-code" class="code"></p><p id="approval" class="notice"></p><div id="ticket" class="ticket"></div>
+ <div class="ticket-actions"><button id="regenerate" class="ghost">↻ Recreate ticket</button><button id="submit">Confirm & submit</button></div><p id="ticket-help" class="small">Up to three recreations are allowed before play. Starting automatically submits approved tickets.</p>
+ <details id="recovery-panel"><summary>Save your private recovery code</summary><p id="recovery-code" class="recovery-code"></p><p class="small">Keep this code private. It restores your ticket on another device. The host can reset it if needed.</p></details></section>
+ <section id="game-section" class="panel" hidden><div class="row between"><h2>The game is glowing</h2><span id="gameStatus" class="badge">—</span></div><p id="lastCall"></p><div id="callHistory" class="small" style="overflow-wrap:anywhere"></div><h2 style="margin-top:24px">Claim your prize</h2><p class="small">Winners are detected automatically; a claim alerts the host for review.</p><div id="categories" class="categories"></div>
+ <details style="margin-top:24px"><summary>✨ Lucky Strike</summary><p id="powerStatus" class="small"></p><form id="powerForm"><label>Your uncalled number<input id="powerNumber" type="number" min="1" max="90" required></label><button id="powerSubmit" class="secondary">Request Lucky Strike</button></form></details></section>
+ </main><script>
+ (function(){
+ const $=s=>document.querySelector(s),id=location.pathname.split('/').filter(Boolean).pop(),root='/games/'+encodeURIComponent(id);
+ const tokenKey='tambola-token-'+id,recoveryKey='tambola-recovery-'+id;
+ const memory={};const storage={get(key){try{return localStorage.getItem(key);}catch{return memory[key]||null;}},set(key,value){memory[key]=value;try{localStorage.setItem(key,value);}catch{$('#storage-warning').hidden=false;}},remove(key){delete memory[key];try{localStorage.removeItem(key);}catch{}}};
+ let token=storage.get(tokenKey),ticket=null,player=null,game=null,called=new Set(),refreshing=false,queued=false,busy=false,powerState=null,rerollsRemaining=3;
+ function uuid(){const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const s=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20);}
+ let deviceId=storage.get('tambola-device');if(!deviceId){deviceId=uuid();storage.set('tambola-device',deviceId);}
+ const message=text=>$('#message').textContent=text||'';
+ async function request(path,method='GET',body){const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);try{const response=await fetch(root+path,{method,cache:'no-store',signal:controller.signal,headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});const data=await response.json().catch(()=>({}));if(!response.ok){const error=Error(Array.isArray(data.message)?data.message.join(', '):data.message||'Request failed');error.status=response.status;throw error;}return data;}finally{clearTimeout(timeout);}}
+ async function action(button,work){busy=true;button.disabled=true;try{await work();}catch(error){message(error.message);}finally{busy=false;button.disabled=false;render();}}
+ function show(data){ticket=data.ticket;player=data.player;rerollsRemaining=data.rerollsRemaining??3;if(data.token){token=data.token;storage.set(tokenKey,token);}if(data.recoveryCode){storage.set(recoveryKey,data.recoveryCode);$('#recovery-panel').open=true;}$('#register').hidden=true;$('#ticket-section').hidden=false;$('#game-section').hidden=false;render();}
+ function render(){const closed=game&&(game.status==='COMPLETED'||game.emergencyStopped);$('#register-button').disabled=busy||!!closed;$('#registration-help').textContent=!game?'Connecting to the game. You can still try to register.':closed?'Registration is closed while play is stopped or finished.':'Joining is open; the host will approve your name.';$('#powerSubmit').disabled=busy||!token||!player?.approved||powerState!=='AVAILABLE'||!['RUNNING','PAUSED'].includes(game?.status)||game?.emergencyStopped||ticket?.status!=='SUBMITTED';if(!ticket)return;$('#welcome').textContent=player.name;$('#ticket-code').textContent=ticket.displayCode;const submitted=ticket.status==='SUBMITTED',open=game?.status==='CREATED'&&!game?.emergencyStopped;
+ $('#status').textContent=submitted?'Submitted ✓':'Draft ticket';$('#approval').textContent=player.approved?'':submitted?'Ticket saved. Ask the host to approve you before you can win.':'Waiting for host approval. You can still recreate your draft.';
+ $('#submit').hidden=submitted;$('#regenerate').hidden=submitted;$('#submit').disabled=busy||!token||!player.approved||!open;$('#regenerate').disabled=busy||!token||!open||rerollsRemaining<=0;
+ $('#ticket-help').textContent=submitted?(player.approved?'Your submitted ticket is saved. Return here any time.':'Your ticket is locked; eligibility starts on the next call after host approval.'):open?rerollsRemaining+' of 3 recreations left. The host will approve you; starting automatically submits your ticket.':'Ticket changes are closed while the game is stopped or underway.';
+ $('#ticket').replaceChildren();for(const row of ticket.grid)for(const number of row){const cell=document.createElement('div');cell.className='cell'+(number===null?' empty':called.has(number)?' hit':'');cell.textContent=number===null?'':String(number);$('#ticket').append(cell);}
+ $('#recovery-code').textContent=storage.get(recoveryKey)||'Ask the host to issue a recovery code for this existing registration.';
+ }
+ $('#register').onsubmit=e=>{e.preventDefault();action($('#register-button'),async()=>{show(await request('/players/register','POST',{name:$('#name').value,deviceId}));message('Ticket created. Save your recovery code and ask the host to approve you.');await refresh();});};
+ $('#restore').onsubmit=e=>{e.preventDefault();action($('#restore-button'),async()=>{show(await request('/players/recover','POST',{recoveryCode:$('#recovery-input').value,deviceId}));$('#restore-panel').open=false;$('#recovery-input').value='';message('Your saved ticket is restored.');await refresh();});};
+ $('#submit').onclick=()=>action($('#submit'),async()=>{if(!confirm('Submit '+ticket.displayCode+' for '+player.name+'? You cannot recreate it after submission.'))return;const ticketId=ticket.id;show(await request('/players/me/submit','POST',{ticketId}));message('Ticket submitted. Good luck!');await refresh();});
+ $('#regenerate').onclick=()=>action($('#regenerate'),async()=>{show(await request('/players/me/regenerate','POST'));message('Here is your new draft. Review before submitting.');});
+ $('#powerForm').onsubmit=e=>{e.preventDefault();action($('#powerSubmit'),async()=>{const number=Number($('#powerNumber').value);await request('/players/me/power/request','POST',{number});message('Lucky Strike requested. Play is paused for the host.');await refresh();});};
+ async function refresh(){if(refreshing){queued=true;return;}refreshing=true;try{
+  const display=await request('/guest-display');game=display.game;$('#gameName').textContent=game.name;$('#gameStatus').textContent=game.emergencyStopped?'STOPPED':game.status;
+  if(token){try{show(await request('/players/me'));}catch(error){if(error.status===401){token=null;ticket=null;player=null;storage.remove(tokenKey);message('This session expired. Restore your ticket below.');$('#register').hidden=false;$('#ticket-section').hidden=true;$('#game-section').hidden=true;$('#restore-panel').open=true;}else throw error;}}
+  called=new Set(display.calls.map(call=>call.number));render();const last=display.calls.at(-1);$('#lastCall').textContent=last?'Latest number · '+last.number+' — '+display.calls.length+' of 90 called':'Waiting for the first call';$('#callHistory').textContent=display.calls.map(call=>call.number).join(' · ');
+  $('#categories').replaceChildren();for(const category of display.categories){if(!category.active||category.status==='RESOLVED')continue;const button=document.createElement('button');button.className='ghost';button.textContent=category.name;button.disabled=!token||!player?.approved||ticket?.status!=='SUBMITTED'||game.endedByAdmin;button.onclick=()=>action(button,async()=>{await request('/players/me/claims','POST',{categoryId:category.id});message('Claim sent for '+category.name+'. Play pauses for the host to review.');});$('#categories').append(button);}
+  if(token){const power=await request('/players/me/power');powerState=power.status;$('#powerStatus').textContent=power.status==='USED'?'Lucky Strike used':power.status==='PENDING'?'Request awaiting host approval':'Ask the host to call one uncalled number.';render();}
+ }catch(error){message('Connection · '+(error.name==='AbortError'?'Timed out; retrying':error.message));}finally{refreshing=false;if(queued){queued=false;void refresh();}}}
+ refresh();setInterval(refresh,10000);window.addEventListener('tambola:changed',refresh);
+ })();
+ </script><script src="/socket.io/socket.io.js"></script><script src="/live/client.js"></script></body></html>`;
 }

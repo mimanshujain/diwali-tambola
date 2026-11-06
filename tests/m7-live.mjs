@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 
-const root = 'http://127.0.0.1:3000';
+const root = process.env.TAMBOLA_URL || 'http://127.0.0.1:3000';
 const adminKey = process.env.ADMIN_TOKEN;
 assert(adminKey, 'ADMIN_TOKEN is required in test environment');
 const countArg = process.argv.find(x => x.startsWith('--clients='));
@@ -26,7 +26,7 @@ async function api(path, method='GET', body, auth=true) {
 
 function watch(gameId) {
   return new Promise((resolve,reject)=>{
-    const socket=new WebSocket(`ws://127.0.0.1:3000/socket.io/?EIO=4&transport=websocket`);
+    const socket=new WebSocket(root.replace(/^http/,'ws')+'/socket.io/?EIO=4&transport=websocket');
     let ready=false;let closed=false;const changes=[];const waiters=[];
     const timeout=setTimeout(()=>reject(new Error('Socket.IO game:joined timed out')),10_000);
     const watcher={

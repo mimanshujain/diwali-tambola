@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+
+export async function readinessBrowserChecks({browser,base,key}) {
+ const errors=[];
+ const request=async(path,{method='GET',body,token,admin=false}={})=>{
+  const response=await fetch(base+path,{method,headers:{'content-type':'application/json',...(admin?{'x-admin-key':key}:{}),...(token?{authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+  const data=await response.json();assert.ok(response.ok,path+': '+JSON.stringify(data));return data;
+ };
+ const admin={method:'POST',admin:true};
+ const game=await request('/games',{...admin,body:{name:'Browser readiness '+randomUUID(),intervalSeconds:3600}}),root='/games/'+game.id;
+ const hostContext=await browser.newContext({viewport:{width:1280,height:720}}),guestContext=await browser.newContext({viewport:{width:390,height:844}});
+ try{
+  const host=await hostContext.newPage(),tv=await hostContext.newPage(),guest=await guestContext.newPage();
+  for(const page of [host,tv,guest])page.on('pageerror',error=>errors.push(error.message));
+  await host.addInitScript(secret=>sessionStorage.setItem('tambola-admin-key',secret),key);
+  await tv.addInitScript(()=>{const real=Date.now;Date.now=()=>real()+7*86400*1000;});
+  await tv.goto(base+'/tv/'+game.joinCode+'?sound=1');
+  await tv.locator('#lobby').waitFor({state:'visible'});
+  await tv.waitForFunction(code=>document.querySelector('#lobbyCode').textContent===code,game.joinCode);
+  assert.ok((await tv.locator('#lobbyQr').boundingBox()).width>=300);
+  assert.equal(await tv.locator('#lobbyCode').textContent(),game.joinCode);
+  const initialDisplay=await request(root+'/display'),hostName=new URL(base).hostname.toLowerCase();
+  const loopback=hostName==='localhost'||hostName.endsWith('.localhost')||hostName==='0.0.0.0'||hostName==='[::1]'||/^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(hostName);
+  assert.equal(await tv.locator('#lobby-network-warning').isVisible(),!initialDisplay.guestOrigin&&loopback);
+  const publicTv=await hostContext.newPage();publicTv.on('pageerror',error=>errors.push(error.message));
+  await publicTv.route('**'+root+'/display',async route=>{const response=await route.fetch(),data=await response.json();data.guestOrigin='https://play.example.com';await route.fulfill({status:response.status(),contentType:'application/json',body:JSON.stringify(data)});});
+  await publicTv.goto(base+'/tv/'+game.joinCode);await publicTv.waitForFunction(()=>document.querySelector('#lobbyUrl').textContent.startsWith('https://play.example.com/'));
+  assert.equal(await publicTv.locator('#lobby-network-warning').isVisible(),false);await publicTv.close();
+  assert.ok(await tv.getByRole('button',{name:/sound|press ok/i}).count());
+  assert.ok(await tv.getByRole('button',{name:/Hindi voice on/i}).count());
+  await host.goto(base+'/admin/'+game.id);await host.waitForFunction(()=>document.querySelector('#status').textContent==='CREATED');
+  await host.locator('#enable-alerts').click();
+  await guest.goto(base+'/g/'+game.joinCode);await guest.locator('#name').fill('Priya');
+  assert.equal(await guest.locator('#register-button').isEnabled(),true);await guest.locator('#register-button').click();
+  await guest.waitForFunction(()=>document.querySelector('#welcome').textContent==='Priya');
+  const token=await guest.evaluate(gameId=>localStorage.getItem('tambola-token-'+gameId),game.id);
+  const player=await request(root+'/players/me',{token});
+  await request(root+'/admin/players/'+player.player.id+'/approve',admin);
+  for(let index=0;index<30;index++){
+   const person=await request(root+'/players/register',{method:'POST',body:{name:'Guest '+String(index).padStart(2,'0'),deviceId:randomUUID()}});
+   await request(root+'/admin/players/'+person.player.id+'/approve',admin);
+  }
+  await tv.waitForFunction(()=>document.querySelector('#playerCount').textContent==='31 players');
+  await tv.waitForFunction(()=>document.querySelector('#roster-page').textContent.includes('/ 2'));
+  const rosterPage=await tv.locator('#roster-page').textContent();
+  await tv.waitForFunction(previous=>document.querySelector('#roster-page').textContent!==previous,rosterPage,{timeout:12000});
+  await host.waitForFunction(()=>!document.querySelector('#start').disabled);
+  await host.locator('#start').click();
+  await tv.locator('#playing').waitFor({state:'visible'});await guest.waitForFunction(()=>document.querySelector('#status').textContent==='Submitted ✓');
+  await tv.locator('#playing-roster').waitFor({state:'visible'});assert.ok(await tv.locator('#playing-roster .roster-person').count()>0);
+  await tv.waitForFunction(()=>document.querySelector('#playing-roster-page').textContent.includes('/ 4'));
+  const playingRoster=await tv.evaluate(()=>({height:document.querySelector('#playing-roster').clientHeight,scroll:document.querySelector('#playing-roster').scrollHeight,clipped:[...document.querySelectorAll('#playing-roster .roster-person')].filter(person=>person.scrollHeight>person.clientHeight+1).map(person=>({name:person.textContent,height:person.clientHeight,content:person.scrollHeight}))}));
+  assert.ok(playingRoster.scroll<=playingRoster.height+1&&!playingRoster.clipped.length,JSON.stringify(playingRoster));
+  const playingRosterPage=await tv.locator('#playing-roster-page').textContent();await tv.waitForFunction(previous=>document.querySelector('#playing-roster-page').textContent!==previous,playingRosterPage,{timeout:12000});
+  if(!initialDisplay.guestOrigin&&loopback)assert.match(await tv.locator('#tv-warning').textContent(),/LAN IP/);
+  const runningQr=await tv.locator('#qr').boundingBox();assert.ok(Math.abs(runningQr.width-runningQr.height)<1);assert.ok(runningQr.width>=130);
+  await tv.waitForFunction(()=>/^59:|^60:/.test(document.querySelector('#countdown').textContent));
+  const lateContext=await browser.newContext({viewport:{width:390,height:844}}),late=await lateContext.newPage();late.on('pageerror',error=>errors.push(error.message));
+  await late.goto(base+'/g/'+game.joinCode);await late.locator('#name').fill('Late arrival');assert.equal(await late.locator('#register-button').isEnabled(),true);await late.locator('#register-button').click();
+  await late.waitForFunction(()=>document.querySelector('#status').textContent==='Submitted ✓');assert.match(await late.locator('#approval').textContent(),/host to approve/i);
+  await host.locator('#player-search').fill('Late arrival');await host.getByRole('button',{name:'Approve identity'}).click();await late.waitForFunction(()=>document.querySelector('#approval').textContent==='');
+  await lateContext.close();
+
+  let capture,release;const captured=new Promise(resolve=>capture=resolve),released=new Promise(resolve=>release=resolve);let delay=true;
+  await tv.route('**'+root+'/display',async route=>{if(delay){delay=false;const response=await route.fetch();capture();await released;await route.fulfill({response});}else await route.continue();});
+  await tv.evaluate(()=>window.dispatchEvent(new Event('tambola:changed')));await captured;
+  await request(root+'/calls/manual',{...admin,body:{number:player.ticket.numbers[0]}});release();
+  await tv.waitForFunction(number=>document.querySelector('#latest').textContent===String(number),player.ticket.numbers[0],{timeout:4000});
+  for(const number of player.ticket.numbers.slice(1,5))await request(root+'/calls/manual',{...admin,body:{number}});
+  const last=player.ticket.numbers[4];await tv.waitForFunction(number=>document.querySelector('#latest').textContent===String(number),last);
+  assert.equal(await tv.locator('#n'+last).evaluate(node=>node.classList.contains('latest')),true);
+  assert.equal(await tv.locator('#history .history-item').first().locator('.history-sequence').textContent(),'#1');
+  assert.equal(await tv.locator('#history .history-item').first().locator('.history-number').textContent(),String(player.ticket.numbers[0]));
+  await tv.locator('.party-announce').waitFor({state:'visible'});assert.match(await tv.locator('.party-announce').textContent(),/AUTO-QUALIFIED/);
+  await guest.getByRole('button',{name:'Early Five',exact:true}).click();
+  await host.locator('#claim-banner').waitFor({state:'visible'});assert.match(await host.locator('#claim-message').textContent(),/Priya.*Early Five/);
+  await host.waitForFunction(()=>document.querySelector('#status').textContent==='PAUSED');await tv.waitForFunction(()=>document.querySelector('#status').textContent==='PAUSED');
+  await host.locator('#claim-review').click();await host.locator('#review-panel').waitFor({state:'visible'});await tv.locator('#review').waitFor({state:'visible'});
+  assert.match(await tv.locator('#review-title').textContent(),/Priya/);assert.equal(await tv.locator('#review-grid .review-cell').count(),27);assert.ok(await tv.locator('#review-grid .hit').count()>=5);
+  assert.equal(await host.locator('#resume').isDisabled(),true);await host.locator('#review-confirm').click();await tv.locator('#review').waitFor({state:'hidden'});
+  await host.waitForFunction(()=>document.querySelector('#status').textContent==='RUNNING');
+  const called=new Set(player.ticket.numbers.slice(0,5));
+  const later=[...Array(90).keys()].map(index=>index+1).filter(number=>!called.has(number)).slice(0,12);
+  for(const number of later)await request(root+'/calls/manual',{...admin,body:{number}});
+  await tv.waitForFunction(number=>{const items=Array.from(document.querySelectorAll('#history .history-item'));return document.querySelector('#history-page').textContent==='Calls 3–17 of 17'&&items.length===15&&items[0].querySelector('.history-sequence').textContent==='#3'&&items.at(-1).querySelector('.history-sequence').textContent==='#17'&&items.at(-1).querySelector('.history-number').textContent===String(number);},later.at(-1),{timeout:15000});
+  for(const number of later)called.add(number);const powerNumber=[...Array(90).keys()].map(index=>index+1).find(number=>!called.has(number));
+  await guest.locator('summary').filter({hasText:'Lucky Strike'}).click();await guest.locator('#powerNumber').fill(String(powerNumber));await guest.locator('#powerSubmit').click();
+  await host.locator('#power-banner').waitFor({state:'visible'});assert.match(await host.locator('#power-message').textContent(),/Priya.*Game paused/);
+  await host.locator('#power-review').click();host.once('dialog',dialog=>dialog.accept());await host.getByRole('button',{name:'Approve & call'}).click();
+  await tv.waitForFunction(number=>document.querySelector('#latest').textContent===String(number),powerNumber);assert.equal((await request(root)).status,'PAUSED');
+  await host.locator('#resume').click();await host.waitForFunction(()=>document.querySelector('#status').textContent==='RUNNING');
+  await tv.getByRole('button',{name:'Spotify',exact:true}).click();await tv.locator('.spotify-panel input').fill('https://example.com/playlist/wrong');await tv.getByRole('button',{name:'Load player'}).click();assert.match(await tv.locator('.spotify-panel [role=status]').textContent(),/Spotify playlist/);
+  await tv.route('https://open.spotify.com/**',route=>route.fulfill({status:200,contentType:'text/html',body:'Spotify test player'}));
+  await tv.locator('.spotify-panel input').fill('https://open.spotify.com/playlist/1234567890123456789012');await tv.getByRole('button',{name:'Load player'}).click();assert.match(await tv.locator('.spotify-panel iframe').getAttribute('src'),/open\.spotify\.com\/embed\/playlist/);
+  await request(root+'/admin/end',admin);await tv.locator('#finished').waitFor({state:'visible'});assert.equal(await tv.locator('#status').textContent(),'FINISHED');
+  assert.deepEqual(errors,[]);
+  console.log('PASS lobby, roster, late join, live refresh, claim review, clock and Spotify UI');
+ } finally {await hostContext.close();await guestContext.close();}
+}

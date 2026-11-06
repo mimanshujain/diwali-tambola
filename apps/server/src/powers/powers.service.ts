@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { TambolaService } from '../tambola/tambola.service.js';
 import { assertAdmin } from '../security/admin.js';
 import { assertChosenNumber } from './domain/priority.js';
+import { pauseForPlayerRequest } from '../tambola/player-request-pause.js';
 
 interface PowerRequest extends QueryResultRow {
   id: string;
@@ -49,19 +50,22 @@ export class PowersService {
     try { number=assertChosenNumber(rawNumber); }
     catch { throw new BadRequestException('Choose an integer between 1 and 90'); }
     return this.db.transaction(async client=>{
-      const game=await client.query<{status:string;remaining_numbers:number[]}>(
-        'SELECT status,remaining_numbers FROM games WHERE id=$1 FOR UPDATE',[gameId]);
+      const game=await client.query<{status:string;started_at:Date|null;emergency_stopped:boolean;remaining_numbers:number[]}>(
+        'SELECT status,started_at,emergency_stopped,remaining_numbers FROM games WHERE id=$1 FOR UPDATE',[gameId]);
       if(!game.rows[0])throw new NotFoundException('Game not found');
-      if(game.rows[0].status!=='RUNNING')throw new ConflictException('Lucky Strike is available while game is running');
+      if(!['RUNNING','PAUSED'].includes(game.rows[0].status)||!game.rows[0].started_at||game.rows[0].emergency_stopped)
+        throw new ConflictException('Lucky Strike is available after play starts and while the game is not stopped');
       if(!game.rows[0].remaining_numbers.map(Number).includes(number))throw new ConflictException('Number has already been called');
-      const ticket=await client.query("SELECT 1 FROM tickets WHERE player_id=$1 AND status='SUBMITTED' LIMIT 1",[playerId]);
-      if(!ticket.rowCount)throw new ConflictException('Submit a ticket before using Lucky Strike');
+      const ticket=await client.query(`SELECT 1 FROM tickets t JOIN players p ON p.id=t.player_id
+        WHERE t.player_id=$1 AND t.status='SUBMITTED' AND p.approved LIMIT 1`,[playerId]);
+      if(!ticket.rowCount)throw new ConflictException('An approved, submitted ticket is required for Lucky Strike');
       await client.query(`INSERT INTO player_powers(player_id,game_id) VALUES($1,$2) ON CONFLICT(player_id) DO NOTHING`,[playerId,gameId]);
       const power=await client.query<{status:string}>('SELECT status FROM player_powers WHERE player_id=$1 FOR UPDATE',[playerId]);
       if(power.rows[0]?.status!=='AVAILABLE')throw new ConflictException('Lucky Strike is pending or was already used');
       const id=randomUUID();
       await client.query(`INSERT INTO power_requests(id,game_id,player_id,requested_number) VALUES($1,$2,$3,$4)`,[id,gameId,playerId,number]);
       await client.query("UPDATE player_powers SET status='PENDING' WHERE player_id=$1",[playerId]);
+      await pauseForPlayerRequest(client,gameId,false);
       return {id,number,status:'PENDING'};
     });
   }
@@ -95,7 +99,6 @@ export class PowersService {
         await client.query("UPDATE player_powers SET status='AVAILABLE' WHERE player_id=$1",[r.player_id]);
         return {id:requestId,status:'REJECTED',number:r.requested_number};
       }
-      if(game.rows[0].status!=='RUNNING') throw new ConflictException('Resume main game before approving Lucky Strike');
       const activeTicket=await client.query("SELECT 1 FROM tickets WHERE player_id=$1 AND status='SUBMITTED' LIMIT 1",[r.player_id]);
       if(!activeTicket.rowCount)throw new ConflictException('Player must have a submitted active ticket');
       const called=await this.tambola.callPowerNumberLocked(client,gameId,Number(r.requested_number),requestId);

@@ -25,6 +25,7 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN in .env}
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-tambola}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-tambola}
+      PUBLIC_GUEST_ORIGIN: ${PUBLIC_GUEST_ORIGIN:-}
     ports:
       - "3000:3000"
     depends_on:

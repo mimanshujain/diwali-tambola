@@ -31,9 +31,14 @@ Check the backup file is nonempty and test restoration on a **separate disposabl
 ## During a party
 
 - Keep admin token private and the admin screen on a trusted device.
+- Verify guest Wi-Fi does not enable client/AP isolation: phones and the TV must reach the Pi.
 - Avoid rebuilding or restarting while a game is active.
 - If Wi-Fi drops, reconnect and verify that the ticket/call sequence catches up.
-- If a number is disputed, pause calling, inspect the admin state, and resolve before resuming.
+- Enable host alert sounds; claims and Lucky Strike requests pause play. Use **Review claim** to show a ticket on the TV, then confirm or cancel; approve or reject Lucky Strike and resume when ready.
+- If a guest changes browsers, use their private recovery code or **Release phone / reset access** after verifying their identity.
+- For a smartphone-free player, approve and submit a ticket and print it in the browser. Automatic printing requires a separately configured CUPS queue; the app does not set one up.
+
+Run `python3 tests/m7-party-rehearsal.py` on the Pi before the party. It creates a separate, persistent 30-player rehearsal game and does not delete existing games. Confirm the TV's audio, Hindi voice, Spotify playback and physical printer separately.
 
 ## Upgrades
 
