@@ -6,6 +6,7 @@ import { TambolaService } from './tambola.service.js';
 export class GameSchedulerService implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
+  private stopping = false;
   private lastCheckpointAt = 0;
 
   constructor(
@@ -14,6 +15,15 @@ export class GameSchedulerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.database.schedulerWork('game',()=>this.recover(),async()=>{});
+    this.lastCheckpointAt = Date.now();
+    this.timer = setInterval(() => {
+      void this.tick();
+    }, 1_000);
+    this.timer.unref();
+  }
+
+  private async recover():Promise<void> {
     await this.database.query(`UPDATE games SET review_resume_after=false,recovered_at=NOW()
       WHERE review_resume_after=true`);
     // A server restart never silently consumes the downtime as game time.
@@ -34,16 +44,13 @@ export class GameSchedulerService implements OnModuleInit, OnModuleDestroy {
       console.warn(`Recovered ${recovered.rowCount} active game(s) as PAUSED. Resume them from the admin controls.`);
     }
 
-    this.lastCheckpointAt = Date.now();
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, 1_000);
-    this.timer.unref();
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.stopping = true;
     if (this.timer) clearInterval(this.timer);
     // A graceful shutdown saves the most accurate remaining delay.
+    await this.database.schedulerWork('game',async()=>{},async()=>{
     await this.database.query(
       `UPDATE games
        SET status = 'PAUSED',
@@ -52,12 +59,14 @@ export class GameSchedulerService implements OnModuleInit, OnModuleDestroy {
            next_call_at = NULL
        WHERE status = 'RUNNING'`,
     );
+    },true);
   }
 
   private async tick(): Promise<void> {
-    if (this.ticking) return;
+    if (this.ticking || this.stopping) return;
     this.ticking = true;
     try {
+      await this.database.schedulerWork('game',()=>this.recover(),async()=>{
       const dueGames = await this.database.query<{ id: string }>(
         `SELECT id FROM games
          WHERE status = 'RUNNING' AND next_call_at <= NOW()
@@ -82,6 +91,7 @@ export class GameSchedulerService implements OnModuleInit, OnModuleDestroy {
         );
         this.lastCheckpointAt = Date.now();
       }
+      });
     } catch (error) {
       console.error('Game scheduler tick failed', error);
     } finally {

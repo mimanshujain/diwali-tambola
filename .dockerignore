@@ -7,3 +7,11 @@ node_modules
 **/dist
 coverage
 *.log
+backups
+**/backups
+*.dump
+**/*.dump
+*.sql.gz
+**/*.sql.gz
+__pycache__
+**/__pycache__

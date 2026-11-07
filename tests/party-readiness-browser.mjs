@@ -49,12 +49,12 @@ export async function readinessBrowserChecks({browser,base,key}) {
   await host.locator('#start').click();
   await tv.locator('#playing').waitFor({state:'visible'});await guest.waitForFunction(()=>document.querySelector('#status').textContent==='Submitted ✓');
   await tv.locator('#playing-roster').waitFor({state:'visible'});assert.ok(await tv.locator('#playing-roster .roster-person').count()>0);
-  await tv.waitForFunction(()=>document.querySelector('#playing-roster-page').textContent.includes('/ 4'));
+  await tv.waitForFunction(()=>/Guests \d+ \/ \d+/.test(document.querySelector('#playing-roster-page').textContent));
   const playingRoster=await tv.evaluate(()=>({height:document.querySelector('#playing-roster').clientHeight,scroll:document.querySelector('#playing-roster').scrollHeight,clipped:[...document.querySelectorAll('#playing-roster .roster-person')].filter(person=>person.scrollHeight>person.clientHeight+1).map(person=>({name:person.textContent,height:person.clientHeight,content:person.scrollHeight}))}));
   assert.ok(playingRoster.scroll<=playingRoster.height+1&&!playingRoster.clipped.length,JSON.stringify(playingRoster));
   const playingRosterPage=await tv.locator('#playing-roster-page').textContent();await tv.waitForFunction(previous=>document.querySelector('#playing-roster-page').textContent!==previous,playingRosterPage,{timeout:12000});
   if(!initialDisplay.guestOrigin&&loopback)assert.match(await tv.locator('#tv-warning').textContent(),/LAN IP/);
-  const runningQr=await tv.locator('#qr').boundingBox();assert.ok(Math.abs(runningQr.width-runningQr.height)<1);assert.ok(runningQr.width>=130);
+  const runningQr=await tv.locator('#qr').boundingBox();assert.ok(Math.abs(runningQr.width-runningQr.height)<1);assert.ok(runningQr.width>=130,JSON.stringify(runningQr));
   await tv.waitForFunction(()=>/^59:|^60:/.test(document.querySelector('#countdown').textContent));
   const lateContext=await browser.newContext({viewport:{width:390,height:844}}),late=await lateContext.newPage();late.on('pageerror',error=>errors.push(error.message));
   await late.goto(base+'/g/'+game.joinCode);await late.locator('#name').fill('Late arrival');assert.equal(await late.locator('#register-button').isEnabled(),true);await late.locator('#register-button').click();

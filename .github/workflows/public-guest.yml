@@ -28,7 +28,7 @@ jobs:
           npm test
           npm run typecheck
           npm run build
-          node --test tests/tv-access.mjs
+          node --test tests/tv-access.mjs tests/compose-guest-origin.mjs
 
       - name: Build API and start isolated guest gateway (not the tunnel)
         run: |

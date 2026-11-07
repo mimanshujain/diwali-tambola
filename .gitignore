@@ -9,3 +9,7 @@ coverage/
 .DS_Store
 
 backups/
+*.dump
+*.sql.gz
+__pycache__/
+*.pyc

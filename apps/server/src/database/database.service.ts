@@ -1,4 +1,8 @@
+import { cloudMode } from '../hosting/context.js';
 import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
+import { HOSTED_ACCOUNTS_MIGRATION } from './migrations/010_hosted_accounts.js';
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 import { MILESTONE_2_MIGRATION } from './migrations/001_game_engine.js';
 import { MILESTONE_3_MIGRATION } from './migrations/002_players.js';
@@ -13,6 +17,10 @@ import { PARTY_READINESS_MIGRATION } from './migrations/009_party_readiness.js';
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   readonly pool: Pool;
+  private readonly schedulerClient = new AsyncLocalStorage<PoolClient>();
+  private readonly schedulerOwner = randomUUID();
+  private savepoint = 0;
+  private readonly lanRecovered = new Set<string>();
   private initialization: Promise<void> | null = null;
 
   constructor() {
@@ -47,10 +55,17 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     values: unknown[] = [],
   ): Promise<QueryResult<T>> {
     await this.ensureReady();
-    return this.pool.query<T>(text, values as any[]);
+    return (this.schedulerClient.getStore() ?? this.pool).query<T>(text, values as any[]);
   }
 
   async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+    const scoped = this.schedulerClient.getStore();
+    if (scoped) {
+      const name='scheduler_'+(++this.savepoint);
+      await scoped.query('SAVEPOINT '+name);
+      try {const result=await work(scoped);await scoped.query('RELEASE SAVEPOINT '+name);return result;}
+      catch(error){await scoped.query('ROLLBACK TO SAVEPOINT '+name);throw error;}
+    }
     await this.ensureReady();
     const client = await this.pool.connect();
     try {
@@ -64,6 +79,25 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     } finally {
       client.release();
     }
+  }
+
+  /** Lease and scheduler effects commit together, fencing overlapping deployments. */
+  async schedulerWork(name:string, recover:()=>Promise<void>, work:()=>Promise<void>, stop=false):Promise<void> {
+    if(!cloudMode()) {
+      if(!stop && !this.lanRecovered.has(name)){await recover();this.lanRecovered.add(name);}
+      await work();return;
+    }
+    await this.transaction(async client => {
+      const lease=(await client.query<{owner:string|null;expired:boolean}>(
+        'SELECT owner,expires_at<NOW() AS expired FROM scheduler_leases WHERE name=$1 FOR UPDATE'+(stop?'':' SKIP LOCKED'),[name])).rows[0];
+      if(!lease || (stop ? lease.owner!==this.schedulerOwner : lease.owner && lease.owner!==this.schedulerOwner && !lease.expired))return;
+      const takeover=lease.owner!==this.schedulerOwner;
+      await this.schedulerClient.run(client,async()=>{
+        if(takeover && !stop)await recover();
+        await work();
+      });
+      await client.query("UPDATE scheduler_leases SET owner=$2,expires_at=NOW()+INTERVAL '15 seconds' WHERE name=$1",[name,stop?null:this.schedulerOwner]);
+    });
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -143,6 +177,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       if (!readiness.rowCount) {
         await client.query(PARTY_READINESS_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['009_party_readiness']);
+      }
+      const hosted = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['010_hosted_accounts']);
+      if (!hosted.rowCount) {
+        await client.query(HOSTED_ACCOUNTS_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['010_hosted_accounts']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');

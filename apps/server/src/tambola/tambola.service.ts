@@ -1,3 +1,4 @@
+import { hostId } from '../hosting/context.js';
 import {
   BadRequestException,
   ConflictException,
@@ -65,6 +66,7 @@ export class TambolaService {
       throw new BadRequestException('intervalSeconds must be an integer between 10 and 86400.');
     }
 
+    const owner = hostId();
     const id = randomUUID();
     const remainingNumbers = createShuffledNumbers();
     // A DB uniqueness constraint arbitrates collisions, including concurrent game creation.
@@ -72,10 +74,15 @@ export class TambolaService {
     for (let attempt = 0; attempt < 16; attempt++) {
       try {
         await this.database.transaction(async client => {
+          if(owner){
+            await client.query('SELECT id FROM hosts WHERE id=$1 FOR UPDATE',[owner]);
+            const limits=(await client.query("SELECT count(*)::int AS total,count(*) FILTER(WHERE status<>'COMPLETED')::int AS active FROM games WHERE host_id=$1",[owner])).rows[0];
+            if(limits.active>=5 || limits.total>=100)throw new ConflictException('Host limit reached: 5 active games or 100 saved games. End an active game or contact the service owner.');
+          }
           await client.query(
-            `INSERT INTO games (id, name, interval_seconds, remaining_numbers, join_code)
-             VALUES ($1::uuid, $2, $3, $4::smallint[], $5)`,
-            [id, name, intervalSeconds, remainingNumbers, generateJoinCode()],
+            `INSERT INTO games (id, name, interval_seconds, remaining_numbers, join_code, host_id)
+             VALUES ($1::uuid, $2, $3, $4::smallint[], $5, $6)`,
+            [id, name, intervalSeconds, remainingNumbers, generateJoinCode(), owner],
           );
           await client.query(`INSERT INTO winning_categories(id,game_id,rule_type,name)
             SELECT gen_random_uuid(),$1,rule_type,name FROM (VALUES
@@ -101,7 +108,7 @@ export class TambolaService {
       g.next_number_sequence-1 AS "calledCount",g.created_at AS "createdAt",
       (SELECT count(*)::int FROM players p WHERE p.game_id=g.id AND EXISTS (SELECT 1 FROM tickets t WHERE t.player_id=p.id AND t.status IN ('ASSIGNED','SUBMITTED'))) AS "playerCount",
       (SELECT count(*)::int FROM tickets t WHERE t.game_id=g.id AND t.status='SUBMITTED') AS "submittedCount"
-      FROM games g ORDER BY (g.status='COMPLETED'),g.created_at DESC LIMIT 200`)).rows;
+      FROM games g WHERE ($1::uuid IS NULL OR g.host_id=$1) ORDER BY (g.status='COMPLETED'),g.created_at DESC LIMIT 200`,[hostId()])).rows;
   }
 
   async stopGame(gameId: string, action: 'stop' | 'release' | 'end') {

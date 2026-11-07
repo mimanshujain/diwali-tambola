@@ -1,0 +1,37 @@
+name: Hosted accounts and party rehearsals
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - run: npm ci
+      - run: npm test && npm run typecheck && npm run build
+      - name: Install isolated rehearsal tools
+        run: npm install --prefix /tmp/tambola-test-tools embedded-postgres@18.6.0-beta.19 playwright-core@1.64.1 @sparticuz/chromium@153.0.0
+      - name: Hosted security, HTTPS browsers and overlapping server recovery
+        env:
+          TAMBOLA_TEST_TOOLS: /tmp/tambola-test-tools
+        run: node tests/hosted-rehearsal.mjs
+      - name: Existing LAN party and TV rehearsal
+        env:
+          TAMBOLA_TEST_TOOLS: /tmp/tambola-test-tools
+        run: node tests/party-rehearsal.mjs
+      - name: Rehearsal artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-artifacts
+          path: |
+            /tmp/tambola-hosted-*/*.png
+            /tmp/tambola-hosted-*/server.log
+            /tmp/tambola-rehearsal-*/*.png
+            /tmp/tambola-rehearsal-*/*.pdf
+            /tmp/tambola-rehearsal-*/server.log
