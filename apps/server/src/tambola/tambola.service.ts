@@ -1,3 +1,4 @@
+import { THEMES, resolveTheme } from '../display/appearance.js';
 import { hostId } from '../hosting/context.js';
 import {
   BadRequestException,
@@ -20,6 +21,9 @@ interface GameRow extends QueryResultRow {
   id: string;
   join_code: string;
   name: string;
+  theme_id: string;
+  theme_version: number;
+  welcome_message: string;
   status: GameStatus;
   interval_seconds: number;
   remaining_numbers: number[];
@@ -40,6 +44,8 @@ interface GameRow extends QueryResultRow {
 interface CreateGameInput {
   name?: unknown;
   intervalSeconds?: unknown;
+  themeId?: unknown;
+  welcomeMessage?: unknown;
 }
 
 export interface CalledNumber {
@@ -66,6 +72,7 @@ export class TambolaService {
       throw new BadRequestException('intervalSeconds must be an integer between 10 and 86400.');
     }
 
+    const appearance = this.validateAppearance({...input,name});
     const owner = hostId();
     const id = randomUUID();
     const remainingNumbers = createShuffledNumbers();
@@ -80,9 +87,9 @@ export class TambolaService {
             if(limits.active>=5 || limits.total>=100)throw new ConflictException('Host limit reached: 5 active games or 100 saved games. End an active game or contact the service owner.');
           }
           await client.query(
-            `INSERT INTO games (id, name, interval_seconds, remaining_numbers, join_code, host_id)
-             VALUES ($1::uuid, $2, $3, $4::smallint[], $5, $6)`,
-            [id, name, intervalSeconds, remainingNumbers, generateJoinCode(), owner],
+            `INSERT INTO games (id, name, interval_seconds, remaining_numbers, join_code, host_id, theme_id, welcome_message)
+             VALUES ($1::uuid, $2, $3, $4::smallint[], $5, $6, $7, $8)`,
+            [id, name, intervalSeconds, remainingNumbers, generateJoinCode(), owner, appearance.themeId, appearance.welcomeMessage],
           );
           await client.query(`INSERT INTO winning_categories(id,game_id,rule_type,name)
             SELECT gen_random_uuid(),$1,rule_type,name FROM (VALUES
@@ -99,6 +106,26 @@ export class TambolaService {
       }
     }
     if (!created) throw new ConflictException('Could not allocate a unique game code. Please retry.');
+    return this.getGame(id);
+  }
+
+  private validateAppearance(input:{name?:unknown;themeId?:unknown;welcomeMessage?:unknown}) {
+    const name=typeof input.name==='string'?input.name.trim():'';
+    const themeId=input.themeId===undefined?'classic':input.themeId;
+    const welcomeMessage=input.welcomeMessage===undefined?'':input.welcomeMessage;
+    if(!name || name.length>100)throw new BadRequestException('Event name must contain 1–100 characters.');
+    if(!THEMES.some(t=>t.id===themeId))throw new BadRequestException('Choose an available theme.');
+    if(typeof welcomeMessage!=='string' || welcomeMessage.length>240)throw new BadRequestException('Welcome message must be at most 240 characters.');
+    return {name,themeId,welcomeMessage:welcomeMessage.trim()};
+  }
+
+  async updateAppearance(id:string,input:{name?:unknown;themeId?:unknown;welcomeMessage?:unknown;confirmLive?:unknown}) {
+    this.assertUuid(id);const appearance=this.validateAppearance(input);
+    await this.database.transaction(async client=>{
+      const game=await this.lockGame(client,id);
+      if((game.status==='RUNNING'||game.status==='PAUSED')&&input.confirmLive!==true)throw new ConflictException('Confirm appearance changes during active play.');
+      await client.query('UPDATE games SET name=$2,theme_id=$3,theme_version=1,welcome_message=$4 WHERE id=$1',[id,appearance.name,appearance.themeId,appearance.welcomeMessage]);
+    });
     return this.getGame(id);
   }
 
@@ -180,7 +207,7 @@ export class TambolaService {
   async getGame(gameId: string): Promise<Record<string, unknown>> {
     this.assertUuid(gameId);
     const result = await this.database.query<GameRow & { remaining_count: number }>(
-      `SELECT id, join_code, name, status, interval_seconds, next_number_sequence,
+      `SELECT id, join_code, name, theme_id, theme_version, welcome_message, status, interval_seconds, next_number_sequence,
               next_ticket_number, next_call_at, paused_remaining_seconds,
               created_at, started_at, completed_at, emergency_stopped, ended_by_admin, recovered_at,
               cardinality(remaining_numbers)::integer AS remaining_count
@@ -195,6 +222,9 @@ export class TambolaService {
       id: game.id,
       joinCode: game.join_code,
       name: game.name,
+      themeId: resolveTheme(game.theme_id,game.theme_version).id,
+      themeVersion: game.theme_version,
+      welcomeMessage: game.welcome_message,
       status: game.status,
       intervalSeconds: game.interval_seconds,
       calledCount,
