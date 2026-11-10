@@ -35,3 +35,5 @@ TV viewports from 540p to 4K, confirmation/cancellation during play, safe text,
 unknown-theme fallback, restart persistence and themed A4 PDF. The migration test
 checks existing games remain Diwali. Hosted rehearsal checks owner isolation for
 appearance changes and public guest metadata. Run the commands in DEVELOPMENT.md.
+
+For game narration and provider setup, see [COMMENTARY.md](COMMENTARY.md).

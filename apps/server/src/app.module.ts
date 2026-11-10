@@ -1,3 +1,4 @@
+import { CommentaryModule } from './commentary/commentary.module.js';
 import { HostingModule } from './hosting/hosting.module.js';
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from './database/database.module.js';
@@ -10,7 +11,7 @@ import { DisplayModule } from './display/display.module.js';
 import { LiveModule } from './live/live.module.js';
 
 @Module({
-  imports: [HostingModule, DatabaseModule, TambolaModule, PlayersModule, WinnersModule, PowersModule, DisplayModule, LiveModule],
+  imports: [HostingModule, DatabaseModule, TambolaModule, PlayersModule, WinnersModule, PowersModule, DisplayModule, LiveModule, CommentaryModule],
   controllers: [HealthController],
 })
 export class AppModule {}
