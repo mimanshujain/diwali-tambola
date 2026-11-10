@@ -1,7 +1,5 @@
 # Tambola live commentary
 
-
-
 Recommended service combination: [Google Gemini 2.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite) for brief Hindi/English text, with [ElevenLabs Flash v2.5](https://elevenlabs.io/docs/overview/capabilities/text-to-speech) for optional consistent speech. The TV's built-in speech is the free baseline. See [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing/) and [ElevenLabs API pricing](https://elevenlabs.io/pricing/api) before enabling paid services.
 
 In **Live AI commentary**, enable narration per game. Choose English or Hindi,
@@ -13,12 +11,33 @@ on the TV to hear the voice. Its local **Narration** switch can silence it.
 
 With no API keys, the system uses factual English/Hindi sentences and the TV's
 built-in speech voices. The available accents depend on the TV's installed
-voices. For AI phrasing, configure `GEMINI_API_KEY` on the server. The small
+voices. For AI phrasing, create an API key in
+[Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY`
+on the server. The small
 `gemini-2.5-flash-lite` model adds a brief reaction to a factual sentence.
 Prompts contain event type, number and hit counts, not player names; the app
 adds approved names afterwards. Requests time out after four seconds and
 fall back to the factual sentence. For consistent cloud speech, configure
 `ELEVENLABS_API_KEY` plus voice IDs for the combinations offered to hosts:
+
+- **Raspberry Pi:** if `.env` already exists, add the new lines to it; do not
+  overwrite your existing database and admin credentials. Otherwise, copy
+  `.env.example` to `.env`. Put the real provider values in `.env`,
+  then recreate the API container with `sudo docker compose up -d --build api`.
+  `compose.yaml` forwards the optional keys and voice IDs to the API. If you use
+  `compose.public.yaml`, it inherits the same API environment.
+- **Render:** `render.yaml` lists the keys and voice IDs as `sync: false` secret
+  prompts when first creating the Blueprint. Render ignores newly added
+  `sync: false` entries for an existing Blueprint, so add them in the web
+  service's **Environment** settings instead and redeploy. The initial
+  Blueprint form prompts for every listed secret: if you are not enabling
+  commentary yet, remove its optional entries before creating the Blueprint
+  and add the keys in the dashboard later.
+
+Get the ElevenLabs API key from your ElevenLabs account and select voice IDs
+from voices you can use in its voice library. Set `ELEVENLABS_API_KEY` and at
+least the voice ID for each language/accent combination you plan to offer.
+No client-side key is needed: both requests originate from the API server.
 
 | Server environment variable | Used for |
 | --- | --- |
@@ -31,8 +50,7 @@ fall back to the factual sentence. For consistent cloud speech, configure
 Only configure voice IDs you have rights to use and that sound good in the
 selected language. Select **Cloud voice** in the console after the server has
 both the API key and the matching voice ID. An unconfigured combination is
-rejected. For hosted deployment, add the keys and voice IDs as secret environment
-variables on the web service; never expose them in the browser or repository.
+rejected. Never expose the keys in the browser or repository.
 Cloud speech sends the completed sentence, including any approved player name,
 to ElevenLabs. Text generation does not send player names to Gemini. The
 provider bills the server owner; set provider spending limits independently.

@@ -35,6 +35,10 @@ The supplied `render.yaml` describes one Docker web service and a separate manag
    | `DATABASE_URL` | Blueprint supplies the database’s internal connection string |
 
    Do not set `ADMIN_TOKEN` or use the Pi’s guest-only Cloudflare gateway for this deployment. Cloud mode needs host, guest, auth, TV and Socket.IO routes on the same HTTPS origin. TLS terminates at Render’s ingress; the app trusts exactly one proxy hop. If hosting behind a different proxy chain, review this setting and IP-based rate limiting first.
+   For optional AI narration, set `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` plus
+   the matching `COMMENTARY_ELEVEN_VOICE_*` voice IDs on the same web service.
+   See [COMMENTARY.md](COMMENTARY.md) for the Pi and Render setup. These values
+   are never needed in the guest browser or TV URL.
 5. Deploy manually. Startup applies additive migrations under a database lock. `/health/ready` must report a connected database. In a private browser window, confirm `/admin` asks for sign-in and an old admin key cannot unlock `/games`.
 6. Use two invited accounts to create separate games. Confirm neither account sees the other’s games. Join from a guest phone, approve and submit a ticket, pair a TV, then disconnect that TV. Test a number call, pause/resume and a print preview before inviting a party.
 7. Enable and verify your database backup/retention settings, test a restore to a separate database, and configure a health monitor for `/health/ready`. Verify the provider’s selected plan and recovery window before relying on it for an event.
