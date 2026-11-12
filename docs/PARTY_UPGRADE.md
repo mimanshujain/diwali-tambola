@@ -81,3 +81,7 @@ For LAN-only deployment omit `-f compose.public.yaml`. Migrations `008_party_ope
 ## Verification
 
 Use disposable databases/games for acceptance tests. See [DEVELOPMENT.md](DEVELOPMENT.md). The upgrade adds HTTP operations, concurrent duplicate-write, legacy migration, browser/print, forced-crash and backup/restore acceptance coverage. The Docker workflow runs on PostgreSQL 17; the optional local rehearsal uses an isolated embedded PostgreSQL 18 instance. Physical TV remote/browser behavior and printer-driver output still require a device rehearsal.
+
+## Delete a game
+
+Choose **Delete game…** on a host-desk game card (use All games to find completed games), or open **Manual call, ending & deleting** in its console. Type that game’s code to confirm. Deleting an active game ends it and permanently removes its players, tickets, calls, claims, prize outcomes, powers, tie-breaks and activity history in one transaction. Other games are unchanged. There is no in-app undo; an existing database backup is the only recovery source. **End game** remains available when you want to keep the records.
