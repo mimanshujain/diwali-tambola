@@ -1,5 +1,6 @@
+import { assertAdmin as authenticateAdmin } from '../security/admin.js';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { eligibleAtSequence, isEligible, RULE_LABELS, type Grid, type RuleType } from './domain/rules.js';
@@ -12,7 +13,7 @@ export interface Category extends QueryResultRow {id:string;game_id:string;rule_
 interface Ticket extends QueryResultRow {id:string;player_id:string;grid:Grid;status:string;eligible_from_sequence:number;}
 interface Eligibility extends QueryResultRow {category_id:string;player_id:string;ticket_id:string;first_eligible_sequence:number;}
 function uuid(raw:unknown):string {if(typeof raw!=='string'|| !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw))throw new BadRequestException('Invalid UUID');return raw;}
-function authenticateAdmin(key?:string):void {const configured=process.env.ADMIN_TOKEN;if(!configured||!key||!timingSafeEqual(createHash('sha256').update(key).digest(),createHash('sha256').update(configured).digest()))throw new UnauthorizedException('Admin key required');}
+
 
 @Injectable()
 export class WinnersService {

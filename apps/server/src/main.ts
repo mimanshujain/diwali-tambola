@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import { cloudMode, validateHosting } from './hosting/context.js';
+import { HostingService } from './hosting/hosting.service.js';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { Server } from 'socket.io';
@@ -7,7 +9,8 @@ import { lanHardening, adminRateLimit } from './security/lan-hardening.js';
 import type { IncomingMessage } from 'node:http';
 
 async function bootstrap(): Promise<void> {
-  if ((process.env.ADMIN_TOKEN?.length ?? 0) < 32 || /^(replace|change|your|example)/i.test(process.env.ADMIN_TOKEN ?? '')) {
+  validateHosting();
+  if (!cloudMode() && ((process.env.ADMIN_TOKEN?.length ?? 0) < 32 || /^(replace|change|your|example)/i.test(process.env.ADMIN_TOKEN ?? ''))) {
     console.warn('ADMIN_TOKEN is missing or short. Set a random token of at least 32 characters before hosting.');
   }
   const app = await NestFactory.create(AppModule, {
@@ -16,7 +19,12 @@ async function bootstrap(): Promise<void> {
 
   app.enableShutdownHooks();
   app.use(lanHardening);
-  app.use(adminRateLimit);
+  if (cloudMode()) {
+    // Render terminates TLS at its single ingress proxy. Do not trust arbitrary hops.
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+    const hosting = app.get(HostingService);
+    app.use((req: IncomingMessage, res: import('node:http').ServerResponse, next: () => void) => { void hosting.access(req,res,next); });
+  } else app.use(adminRateLimit);
   const io = new Server(app.getHttpServer(), {
     path: '/socket.io', serveClient: true,
     transports: ['websocket', 'polling'],

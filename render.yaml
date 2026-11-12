@@ -1,0 +1,41 @@
+# Invite-only hosted pilot. Deploy from main after the hosted PR is merged.
+# Review Render's displayed costs before creating these paid resources.
+services:
+  - type: web
+    name: diwali-tambola
+    runtime: docker
+    branch: main
+    region: virginia
+    plan: 0.5c-512mb
+    numInstances: 1
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health/ready
+    autoDeployTrigger: 'off'
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOSTING_MODE
+        value: cloud
+      - key: DATABASE_URL
+        fromDatabase:
+          name: diwali-tambola-db
+          property: connectionString
+      - key: PUBLIC_APP_ORIGIN
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: HOST_ALLOWED_EMAILS
+        sync: false
+
+databases:
+  - name: diwali-tambola-db
+    region: virginia
+    plan: 0.1c-256mb
+    diskSizeGB: 5
+    postgresMajorVersion: '17'
+    databaseName: tambola
+    user: tambola
+    ipAllowList: []

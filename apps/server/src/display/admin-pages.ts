@@ -1,9 +1,16 @@
+import { cloudMode } from '../hosting/context.js';
 import { html, adminSidebar } from './theme.js';
 import { RULE_LABELS } from '../winners/domain/rules.js';
 
+function authPanel(label:string):string {
+ return cloudMode() ? `<style>@media(max-width:600px){.host-auth{flex-wrap:wrap}.host-auth>div{flex-basis:100%!important}.host-auth>button{flex:1}}</style><div class="panel auth host-auth"><input id="key" type="hidden"><div style="flex:1;min-width:0"><div class="eyebrow">Your private host account</div><span id="host-account" style="overflow-wrap:anywhere">Signed in</span></div><button id="load" class="ghost">Refresh</button><button id="sign-out" type="button" class="ghost">Sign out</button></div>` : `<div class="panel auth"><label>Admin key<input id="key" type="password" autocomplete="off" placeholder="Your private host key"></label><button id="load">Unlock ${label}</button></div>`;
+}
+
 const helpers=String.raw`
 const $=s=>document.querySelector(s);
-const keyBox=$('#key');keyBox.value=sessionStorage.getItem('tambola-admin-key')||'';
+const hosted=Boolean($('#host-account'));
+const keyBox=$('#key');keyBox.value=hosted?'':sessionStorage.getItem('tambola-admin-key')||'';
+if(hosted){$('#sign-out').onclick=()=>run($('#sign-out'),async()=>{await request('/auth/logout','POST');location.href='/';});sessionStorage.removeItem('tambola-admin-key');fetch('/auth/me',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(h=>$('#host-account').textContent=h.name+' · '+h.email).catch(()=>location.href='/auth/login');}
 keyBox.oninput=()=>sessionStorage.setItem('tambola-admin-key',keyBox.value);
 function say(message){$('#message').textContent=message||'';}
 function el(tag,text,className){const node=document.createElement(tag);node.textContent=text??'';if(className)node.className=className;return node;}
@@ -13,6 +20,7 @@ async function request(path,method='GET',body){
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
  try{const response=await fetch(path,{method,cache:'no-store',signal:controller.signal,headers:{'content-type':'application/json',...(keyBox.value?{'x-admin-key':keyBox.value}:{})},body:body===undefined?undefined:JSON.stringify(body)});
  const data=await response.json().catch(()=>({}));
+ if(hosted&&response.status===401){location.href='/auth/login';throw Error('Please sign in again.');}
  if(!response.ok)throw Error(Array.isArray(data.message)?data.message.join(', '):data.message||'Request failed ('+response.status+')');return data;
  }catch(error){if(error.name==='AbortError')throw Error('Request timed out. Refreshing the last confirmed state.');throw error;}finally{clearTimeout(timeout);}
 }
@@ -30,9 +38,9 @@ export function homeAdminPage():string {
  return html('Diwali Tambola · Host desk',String.raw`
  <div class="admin-shell"><aside class="sidebar"><div class="brand">🪔 DIWALI<br>TAMBOLA</div><nav aria-label="Admin navigation"><a href="/admin" aria-current="page">All games</a><a href="#create-panel">Create a game</a></nav><small>Welcome to the host desk.<br>Let the festivities begin.</small></aside>
  <main class="wrap stack" style="width:100%"><header class="topbar"><div><div class="eyebrow">The host desk</div><h1>Your evening, in play.</h1><p class="muted">Create, switch and manage your Tambola games.</p></div><span id="health" class="connection">Checking server…</span></header>
- <div class="panel auth"><label>Admin key<input id="key" type="password" autocomplete="off" placeholder="Your private host key"></label><button id="load">Unlock games</button></div>
+ ${authPanel('games')}
  <p id="message" class="notice" role="status"></p>
- <section><div class="topbar"><h2>Games <span id="game-count" class="pill">0</span></h2><div class="row"><input id="search" type="search" aria-label="Search games" placeholder="Find a game or code" style="width:230px"><select id="filter" aria-label="Filter games" style="width:170px"><option value="active">Active games</option><option value="all">All games</option><option value="COMPLETED">Completed</option></select></div></div><div id="games" class="game-cards"><p class="muted">Enter your admin key to load your games.</p></div></section>
+ <section><div class="topbar"><h2>Games <span id="game-count" class="pill">0</span></h2><div class="row"><input id="search" type="search" aria-label="Search games" placeholder="Find a game or code" style="width:230px"><select id="filter" aria-label="Filter games" style="width:170px"><option value="active">Active games</option><option value="all">All games</option><option value="COMPLETED">Completed</option></select></div></div><div id="games" class="game-cards"><p class="muted">${cloudMode()?'Loading your games…':'Enter your admin key to load your games.'}</p></div></section>
  <section id="create-panel" class="panel"><div class="eyebrow">A new round of luck</div><h2>Create a game</h2><form id="create-form"><div class="grid"><label>Game name<input id="name" value="Diwali Tambola" maxlength="100" required></label><label>Seconds between calls<input id="interval" type="number" min="10" max="86400" value="30" required></label></div><p class="small">Guests join by name. Approve each player before they submit. Every player receives a private recovery code.</p><button id="create" type="submit">Create game →</button></form></section>
  </main></div>`,helpers+String.raw`
 let games=[];
@@ -46,7 +54,7 @@ function render(){
  const link=el('a','Open console →','button');link.href='/admin/'+game.id;const actions=el('div','','row');actions.append(link,button('Delete game…',async()=>{if(await deleteGame(game)){await load();say('Game deleted.');}},'red small-button'));card.append(actions);list.append(card);}
  if(!visible.length)empty(list,'No games here yet. Create one below or change the filter.');
 }
-async function load(){if(!keyBox.value)return;games=await request('/games');render();}
+async function load(){if(!hosted&&!keyBox.value)return;games=await request('/games');render();}
 $('#load').onclick=()=>run($('#load'),load);$('#filter').onchange=render;$('#search').oninput=render;
 $('#create-form').onsubmit=e=>{e.preventDefault();run($('#create'),async()=>{const game=await request('/games','POST',{name:$('#name').value,intervalSeconds:Number($('#interval').value)});location.href='/admin/'+game.id;});};
 fetch('/health/ready',{cache:'no-store'}).then(r=>{$('#health').textContent=r.ok?'● Server ready':'Server needs attention';}).catch(()=>$('#health').textContent='Server unavailable');
@@ -60,7 +68,7 @@ export function adminPage(_gameId:string):string {
  <style>.claim-banner{background:#ffdf75;color:#281800;border:3px solid #fff3bb}.claim-banner strong{font-size:clamp(20px,3vw,30px)}.power-banner{background:#91e6cf;border-color:#d4fff2;color:#123629}.claim-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;max-width:620px;margin:10px 0}.claim-cell{aspect-ratio:1.2;display:grid;place-items:center;background:#fff0d4;color:#402636;border-radius:4px;font-weight:800}.claim-cell.empty{background:#59334d}.claim-cell.hit{background:#83e5bb;color:#073829}.claim-cell.latest{background:#00e5ff;color:#081d2a;box-shadow:inset 0 0 0 2px white}.print-dialog{width:min(600px,calc(100vw - 32px));max-height:85vh;background:#2a192e;color:#fff3dc;border:1px solid #80576c;border-radius:16px;padding:22px}.print-dialog::backdrop{background:#000b}.print-options{max-height:42vh;overflow:auto;margin:12px 0}.print-option{display:flex;align-items:center;gap:10px;margin:0;padding:9px 4px;color:#fff3dc;font-size:15px;border-bottom:1px solid #604052}.print-option input{width:20px;height:20px;margin:0;flex:none}.print-option span{min-width:0;overflow-wrap:anywhere}#latest{color:#00e5ff}[hidden]{display:none!important}</style>
  <div class="admin-shell">${adminSidebar}<main class="wrap stack" style="width:100%">
  <header class="topbar"><div><div class="eyebrow"><a href="/admin">Host desk</a> / Game console</div><h1 id="name">Loading game…</h1><div class="row"><span id="status" class="pill">—</span><span id="game-code" class="code"></span></div></div><label>Switch game<select id="switch-game" aria-label="Switch game"><option>Loading…</option></select></label></header>
- <div class="panel auth"><label>Admin key<input id="key" type="password" autocomplete="off" placeholder="Your private host key"></label><button id="load">Unlock controls</button></div>
+ ${authPanel('controls')}
  <p id="message" role="status" class="notice"></p><p id="recovery-notice" class="notice"></p>
  <section id="claim-banner" class="panel claim-banner" role="alert" hidden><div class="row between"><strong id="claim-message"></strong><button id="claim-review">Review claim</button></div></section>
  <section id="power-banner" class="panel claim-banner power-banner" role="alert" hidden><div class="row between"><strong id="power-message"></strong><button id="power-review">Review Lucky Strike</button></div></section>
@@ -78,14 +86,18 @@ export function adminPage(_gameId:string):string {
  <details id="powers-panel" class="panel"><summary>Lucky Strike requests</summary><div class="section-body"><p class="small">A request pauses play. Approving calls the chosen number without resuming a paused game.</p><div id="power-requests" class="list"></div></div></details>
  <details id="rounds-panel" class="panel"><summary>Sudden-death rounds</summary><div class="section-body"><div id="rounds" class="list"></div></div></details>
  <details id="winners-panel" class="panel" open><summary>Declared winners</summary><div class="section-body"><div id="winners" class="list"></div></div></details>
- <details id="access-panel" class="panel"><summary>TV display & guest access</summary><div class="section-body"><div class="row"><img id="tvQr" class="qr" alt="QR code to open the TV display"><div style="min-width:0;flex:1"><h3>Open the TV display</h3><a id="tvUrl" target="_blank" style="overflow-wrap:anywhere">Loading…</a><p class="small">Scan with your phone on the same Wi-Fi as the Pi.</p><div class="row"><a id="tvLink" class="button ghost" target="_blank">Open TV</a><a id="joinLink" class="button ghost" target="_blank">Guest join link</a></div></div></div></div></details>
+ <details id="access-panel" class="panel"><summary>TV display & guest access</summary><div class="section-body"><div class="row"><img id="tvQr" class="qr" alt="QR code to open the TV display"><div style="min-width:0;flex:1"><h3>Open the TV display</h3><a id="tvUrl" target="_blank" style="overflow-wrap:anywhere">Loading…</a><p class="small">${cloudMode()?'Use Open TV on this signed-in device, or pair a different TV below.':'Scan with your phone on the same Wi-Fi as the Pi.'}</p><div class="row"><a id="tvLink" class="button ghost" target="_blank">Open TV</a><a id="joinLink" class="button ghost" target="_blank">Guest join link</a></div>${cloudMode()?'<div class="toolbar stack"><div class="row"><button id="pair-tv">Pair a TV</button><button id="revoke-tv" class="red">Disconnect all TVs</button></div><p id="pair-instructions" class="small">On the TV, open /screen. Pairing codes work once and expire after 10 minutes.</p><strong id="pair-code" class="code" style="font-size:28px"></strong><a id="pair-link" target="_blank" hidden>Open this pairing link</a></div>':''}</div></div></div></details>
  <details id="audit-panel" class="panel"><summary>Activity & recovery</summary><div class="section-body"><p class="small">Game state is saved in PostgreSQL. After an API restart, running games resume here as paused. Review the last call before resuming. Use the supplied backup scripts to protect against storage failure.</p><div id="audit" class="list"></div></div></details>
  </div><dialog id="print-dialog" class="print-dialog" aria-labelledby="print-title"><h2 id="print-title">Select tickets for A4</h2><p class="small">All submitted tickets are selected. Deselect any you do not need; each page holds at most three tickets.</p><div class="row"><button id="print-select-all" class="ghost" type="button">Select all</button><button id="print-select-none" class="ghost" type="button">Deselect all</button><span id="print-count" class="small"></span></div><div id="print-options" class="print-options"></div><p id="print-error" class="notice" role="alert"></p><div class="row"><button id="print-selected" type="button">Preview selected</button><button id="print-cancel" class="ghost" type="button">Cancel</button></div></dialog></main></div>`,helpers+String.raw`
 const id=location.pathname.split('/').filter(Boolean).pop(),root='/games/'+encodeURIComponent(id);
 let display=null,players=[],categories=[],refreshPromise=null,queued=false,intervalLoaded=false,serverClock=0,clockAt=0;
 let knownClaims=null,knownPowers=null,alertContext=null,alertEnabled=false,pendingClaim=null;
 const req=(path,method='GET',body)=>request(root+path,method,body);
-$('#tvQr').src='/admin/'+encodeURIComponent(id)+'/tv-qr.svg';
+if(!hosted)$('#tvQr').src='/admin/'+encodeURIComponent(id)+'/tv-qr.svg';else{
+ $('#tvQr').hidden=true;
+ $('#pair-tv').onclick=()=>run($('#pair-tv'),async()=>{const pair=await req('/admin/tv-pair','POST');$('#pair-code').textContent=pair.code.slice(0,5)+' '+pair.code.slice(5);$('#pair-link').href=pair.url;$('#pair-link').hidden=false;$('#tvQr').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(pair.qr);$('#tvQr').hidden=false;$('#pair-instructions').textContent='On the TV, open '+location.origin+'/screen and enter this code. Or scan the QR with the display device. Valid for 10 minutes, once only.';});
+ $('#revoke-tv').onclick=()=>run($('#revoke-tv'),async()=>{if(!confirm('Disconnect every paired TV for this game?'))return;await req('/admin/tv-revoke','POST');$('#pair-code').textContent='';$('#pair-link').hidden=true;$('#tvQr').hidden=true;say('Paired TVs disconnected. Generate a new code to reconnect.');});
+}
 for(const details of document.querySelectorAll('details.panel')){const key='tambola-panel-'+details.id;const saved=localStorage.getItem(key);if(saved!==null)details.open=saved==='open';details.addEventListener('toggle',()=>localStorage.setItem(key,details.open?'open':'closed'));}
 async function act(path,body){try{await req(path,'POST',body);}catch(error){await refresh();throw error;}await refresh();say('Saved.');}
 function line(container,label,actions=[]){const item=el('div',label,'item');const row=el('div','','row');for(const action of actions)row.append(button(action.label,action.run,action.className));if(actions.length)item.append(row);container.append(item);}
@@ -133,7 +145,7 @@ function renderClaims(claims){const pending=claims.filter(claim=>claim.status===
 function refresh(){if(refreshPromise){queued=true;return refreshPromise;}refreshPromise=(async()=>{do{queued=false;await refreshOnce();}while(queued);})().finally(()=>{refreshPromise=null;});return refreshPromise;}
 async function refreshOnce(){try{
  const started=performance.now();display=await req('/display');const received=performance.now();serverClock=Date.parse(display.serverTime)+(received-started)/2;clockAt=received;controls();
- if(!keyBox.value){say('Enter your admin key to unlock controls.');return;}
+ if(!hosted&&!keyBox.value){say('Enter your admin key to unlock controls.');return;}
  const data=await Promise.all([req('/admin/players'),req('/admin/power-requests'),req('/categories'),req('/admin/claims'),req('/admin/eligible-winners'),req('/admin/audit'),req('/admin/ticket-conflicts')]);
  players=data[0];categories=data[2].map(c=>({...c,status:display.categories.find(x=>x.id===c.id)?.status}));renderPlayers();renderCategories();
  $('#conflicts').textContent=data[6].length?'Conflicting tickets found: '+data[6].map(c=>c.tickets.join(', ')).join('; ')+'. Reissue before play.':'';
@@ -174,6 +186,6 @@ $('#power-review').onclick=()=>{$('#powers-panel').open=true;$('#powers-panel').
 $('#review-confirm').onclick=()=>run($('#review-confirm'),async()=>{const result=await req('/admin/claims/'+display.review.claim_id+'/confirm','POST');await refresh();say(result.outcome?.status==='SUDDEN_DEATH_PENDING'?'Tie-break required; the main game remains paused.':result.resumed?'Prize confirmed; game resumed.':'Prize confirmed; game remains paused.');});
 $('#review-cancel').onclick=()=>run($('#review-cancel'),()=>act('/admin/claims/'+display.review.claim_id+'/cancel'));
 $('#enable-alerts').onclick=()=>{try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio){say('Claim sounds are unavailable in this browser.');return;}alertContext??=new Audio();alertEnabled=true;alertContext.resume().then(()=>{claimSound();$('#enable-alerts').textContent='Claim sound enabled';}).catch(()=>say('Click again to enable claim sound.'));}catch{say('Claim sounds are unavailable in this browser.');}};
-if(keyBox.value)loadGames().catch(error=>say(error.message));refresh();setInterval(refresh,5000);setInterval(clock,300);window.addEventListener('tambola:changed',refresh);
+if(hosted||keyBox.value)loadGames().catch(error=>say(error.message));refresh();setInterval(refresh,5000);setInterval(clock,300);window.addEventListener('tambola:changed',refresh);
 `,'',['/print/client.js']);
 }

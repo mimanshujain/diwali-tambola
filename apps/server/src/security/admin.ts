@@ -1,6 +1,8 @@
+import { cloudMode, hostId } from '../hosting/context.js';
 import { UnauthorizedException } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
 export function assertAdmin(key?: string): void {
+  if (cloudMode()) { hostId(); return; }
   const configured = process.env.ADMIN_TOKEN;
   if (!configured || !key) throw new UnauthorizedException('Admin key required');
   const a = createHash('sha256').update(key).digest();

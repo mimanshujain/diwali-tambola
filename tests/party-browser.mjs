@@ -13,7 +13,7 @@ export async function browserChecks({browser,base,key,state,outputDir}){
  await host.locator('#game-code').filter({hasText:state.lobby.joinCode}).waitFor();
  await host.locator('#access-panel > summary').click();assert.equal(await host.locator('#tvUrl').getAttribute('href'),base+'/tv/'+state.lobby.joinCode);
  assert.ok((await host.locator('#tvQr').getAttribute('src')).endsWith('/tv-qr.svg'));
- await host.locator('#players-panel > summary').click();await host.waitForFunction(()=>!document.querySelector('#players-panel').open);
+ await host.locator('#players-panel > summary').click();await host.waitForFunction(()=>!document.querySelector('#players-panel').open&&localStorage.getItem('tambola-panel-players-panel')==='closed');
  await host.reload();assert.equal(await host.locator('#players-panel').getAttribute('open'),null);await host.locator('#players-panel > summary').click();
  const guestContext=await browser.newContext({viewport:{width:390,height:844}}),guest=await guestContext.newPage();guest.on('pageerror',e=>errors.push(e.message));
  await guest.goto(base+'/g/'+state.lobby.joinCode);await guest.locator('#name').fill('Festival Guest');await guest.locator('#register-button').click();
@@ -73,7 +73,7 @@ export async function browserChecks({browser,base,key,state,outputDir}){
   await tv.setViewportSize({width,height});await tv.goto(base+'/tv/'+state.lobby.joinCode);await tv.waitForFunction(()=>document.querySelectorAll('.ball').length===90&&document.querySelector('#count').textContent==='16');
   const layout=await tv.evaluate(()=>({width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,overflow:[...document.querySelectorAll('.ball,.tv-header,.tv-foot,.tv-current,.tv-join,.tv-activity,.history-panel,.history-item,.playing-roster')].filter(el=>{const r=el.getBoundingClientRect();return r.bottom>innerHeight+.5||r.right>innerWidth+.5||r.top<0||r.left<0;}).map(el=>el.className)}));
   assert.equal(layout.scrollWidth,width,JSON.stringify(layout));assert.equal(layout.scrollHeight,height,JSON.stringify(layout));assert.deepEqual(layout.overflow,[],JSON.stringify(layout));
-  assert.equal(await tv.locator('#playing-roster .roster-person').count(),height<900?8:12);
+  assert.ok(await tv.locator('#playing-roster .roster-person').count()>=4); // Roster paginates to the measured available height.
   const roster=await tv.evaluate(()=>({clipped:[...document.querySelectorAll('#playing-roster .roster-person')].filter(person=>person.scrollHeight>person.clientHeight+1).map(person=>({name:person.textContent,height:person.clientHeight,content:person.scrollHeight})),container:document.querySelector('#playing-roster').clientHeight,scroll:document.querySelector('#playing-roster').scrollHeight}));
   assert.ok(roster.scroll<=roster.container+1,JSON.stringify({width,height,roster}));assert.deepEqual(roster.clipped,[],JSON.stringify({width,height,roster}));
   await tv.waitForFunction(()=>{const items=document.querySelectorAll('#history .history-item');return items.length>1&&items[1].getBoundingClientRect().top>items[0].getBoundingClientRect().top;});

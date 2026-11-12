@@ -45,7 +45,7 @@ try{
  const client=await db.connect();try{await migrationChecks(client);console.log('PASS legacy migration');}finally{client.release();}
  await notificationChecks({base,key,database:env.DATABASE_URL});
  const query=(...args)=>db.query(...args);await deletionChecks({base,key,query});const state=await operations({base,key,query});console.log('PASS operations and concurrent ticket guards');
- browser=await playwright.launch({executablePath:systemChromium||await chromium.executablePath(),args:systemChromium?['--no-sandbox','--disable-dev-shm-usage']:chromium.args.filter(arg=>!['--disable-web-security','--allow-running-insecure-content'].includes(arg)),headless:true});
+ browser=await playwright.launch({executablePath:systemChromium||await chromium.executablePath(),args:systemChromium?['--no-sandbox','--disable-dev-shm-usage']:chromium.args.filter(arg=>!['--disable-web-security','--allow-running-insecure-content','--single-process'].includes(arg)),headless:true});
  await deletionBrowserChecks({browser,base,key});
  await browserChecks({browser,base,key,state,outputDir});console.log('PASS phone, host, TV and A4 browser checks');
  await readinessChecks({base,key});await requestPauseChecks({base,key,db});await readinessBrowserChecks({browser,base,key});await browser.close();browser=null;

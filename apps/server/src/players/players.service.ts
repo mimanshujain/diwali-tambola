@@ -6,7 +6,9 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { assertAdmin } from '../security/admin.js';
+import { cloudMode } from '../hosting/context.js';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { uniqueTicket } from '../tambola/domain/unique-ticket.js';
@@ -66,11 +68,7 @@ export class PlayersService {
   constructor(private readonly database: DatabaseService) {}
 
   checkAdmin(adminKey: string | undefined): void {
-    const configured = process.env.ADMIN_TOKEN;
-    if (!configured || !adminKey) throw new UnauthorizedException('Admin credential required');
-    const left = createHash('sha256').update(adminKey).digest();
-    const right = createHash('sha256').update(configured).digest();
-    if (!timingSafeEqual(left, right)) throw new UnauthorizedException('Invalid admin credential');
+    assertAdmin(adminKey);
   }
 
   async register(gameIdRaw: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -90,6 +88,7 @@ export class PlayersService {
           [gameId, name, deviceId],
         );
         if (found.rowCount) throw new ConflictException('This name or browser is already registered. Restore your ticket or ask the host for help.');
+        if (cloudMode() && Number((await client.query('SELECT count(*) AS n FROM players WHERE game_id=$1',[gameId])).rows[0].n)>=200) throw new ConflictException('This game has reached its 200-player limit.');
         await client.query(
           `INSERT INTO players (id,game_id,name,recovery_hash,device_id,token_hash,approved)
            VALUES ($1,$2,$3,$4,$5,$6,false)`,

@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, UnauthorizedException } from '@nestjs/common';
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { assertAdmin as auth } from '../security/admin.js';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { completedParticipants, miniTicket, shuffledPool } from './domain/sudden-death.js';
@@ -11,33 +12,36 @@ interface Round extends QueryResultRow {
 }
 interface Participant extends QueryResultRow { player_id: string; ticket_id: string; numbers: number[]; }
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-function auth(key?: string): void {
-  const configured = process.env.ADMIN_TOKEN;
-  if (!configured || !key || !timingSafeEqual(createHash('sha256').update(configured).digest(), createHash('sha256').update(key).digest())) {
-    throw new UnauthorizedException('Admin key required');
-  }
-}
+
 
 @Injectable()
 export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SuddenDeathService.name);
   private timer: ReturnType<typeof setInterval> | undefined;
   private ticking = false;
+  private stopping = false;
   private lastCheckpointAt = 0;
   constructor(private readonly db: DatabaseService) {}
 
   async onModuleInit(): Promise<void> {
+    await this.db.schedulerWork('sudden-death',()=>this.recover(),async()=>{});
+    this.timer = setInterval(() => void this.tick(), 1000);
+    this.timer.unref?.();
+  }
+  private async recover():Promise<void> {
     // On any API restart, freeze the mini round. Admin explicitly resumes it.
     await this.db.query(`UPDATE sudden_death_rounds
       SET status='PAUSED', paused_remaining_seconds=COALESCE(paused_remaining_seconds, interval_seconds),next_call_at=NULL
       WHERE status='RUNNING'`);
-    this.timer = setInterval(() => void this.tick(), 1000);
-    this.timer.unref?.();
   }
+
   async onModuleDestroy(): Promise<void> {
+    this.stopping = true;
     if (this.timer) clearInterval(this.timer);
+    await this.db.schedulerWork('sudden-death',async()=>{},async()=>{
     await this.db.query(`UPDATE sudden_death_rounds SET status='PAUSED',next_call_at=NULL,
       paused_remaining_seconds=GREATEST(0,CEIL(EXTRACT(EPOCH FROM(next_call_at-NOW()))))::int WHERE status='RUNNING'`);
+    },true);
   }
 
   static async create(client: PoolClient, gameId: string, categoryId: string,
@@ -90,9 +94,10 @@ export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async tick():Promise<void> {
-    if(this.ticking)return;
+    if(this.ticking || this.stopping)return;
     this.ticking=true;
     try {
+      await this.db.schedulerWork('sudden-death',()=>this.recover(),async()=>{
       if(Date.now()-this.lastCheckpointAt>=5000){
         await this.db.query(`UPDATE sudden_death_rounds SET paused_remaining_seconds=
           GREATEST(0,CEIL(EXTRACT(EPOCH FROM(next_call_at-NOW()))))::int WHERE status='RUNNING'`);
@@ -103,6 +108,7 @@ export class SuddenDeathService implements OnModuleInit, OnModuleDestroy {
         try { await this.draw(round.game_id,round.id); }
         catch (error) { this.logger.error(`Sudden-death draw failed for ${round.id}`,error instanceof Error?error.stack:String(error)); }
       }
+      });
     } catch(error) { this.logger.error('Sudden-death scheduler error',error instanceof Error?error.stack:String(error)); }
     finally {this.ticking=false;}
   }
