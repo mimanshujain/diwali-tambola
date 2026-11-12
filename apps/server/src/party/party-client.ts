@@ -4,10 +4,10 @@ if(!/^\/tv\/[^/]+$/.test(location.pathname))return;
 const css=document.createElement('style');css.textContent=
 '@keyframes partyPop{from{opacity:0;transform:scale(.75)}to{opacity:1;transform:scale(1)}}'+
 '@keyframes numberGlow{0%{filter:brightness(1.9);transform:scale(1.07)}100%{filter:brightness(1);transform:scale(1)}}'+
-'.party-announce{position:fixed;z-index:1000;inset:5% 9%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:3vw;border:4px solid #ffe6a3;border-radius:34px;background:linear-gradient(130deg,#242c58,#56274f);box-shadow:0 0 0 200vmax #000a;color:white;animation:partyPop .4s ease-out;pointer-events:none}'+
-'.party-announce strong{font-size:clamp(25px,5vw,78px)}.party-announce p{font-size:clamp(19px,3vw,42px);color:#ffe5a8}'+
+'.party-announce{position:fixed;z-index:1000;inset:5% 9%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:3vw;border:4px solid var(--occasion-accent);border-radius:34px;background:linear-gradient(130deg,var(--occasion-background),var(--occasion-panel));box-shadow:0 0 0 200vmax #000a;color:white;animation:partyPop .4s ease-out;pointer-events:none}'+
+'.party-announce strong{font-size:clamp(25px,5vw,78px)}.party-announce p{font-size:clamp(19px,3vw,42px);color:var(--occasion-accent)}'+
 '.party-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px}.party-toolbar button{font-size:14px}'+
-'.spotify-panel{position:fixed;z-index:1300;right:2vw;top:10vh;width:min(460px,94vw);padding:20px;border:1px solid #ddb56e;border-radius:18px;background:#1f233e;box-shadow:0 12px 40px #000b}.spotify-panel input{width:100%;margin:8px 0}.spotify-panel iframe{width:100%;height:160px;border:0;border-radius:12px;margin-top:12px}.spotify-panel[hidden]{display:none}'+
+'.spotify-panel{position:fixed;z-index:1300;right:2vw;top:10vh;width:min(460px,94vw);padding:20px;border:1px solid var(--occasion-accent);border-radius:18px;background:var(--occasion-panel);box-shadow:0 12px 40px #000b}.spotify-panel input{width:100%;margin:8px 0}.spotify-panel iframe{width:100%;height:160px;border:0;border-radius:12px;margin-top:12px}.spotify-panel[hidden]{display:none}'+
 '@media(prefers-reduced-motion:reduce){.party-announce,.party-number{animation:none!important}}'+
 '@media print{.party-announce,.party-toolbar,.spotify-panel{display:none!important}}';
 document.head.appendChild(css);

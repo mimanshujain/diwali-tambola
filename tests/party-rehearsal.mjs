@@ -9,6 +9,7 @@ import {tmpdir} from 'node:os';
 import {resolve,join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
+import {appearanceChecks} from './appearance.mjs';
 import {deletionChecks,deletionBrowserChecks} from './game-deletion.mjs';
 import {operations,recoveryChecks} from './party-operations.mjs';
 import {migrationChecks} from './party-migration.mjs';
@@ -48,7 +49,7 @@ try{
  browser=await playwright.launch({executablePath:systemChromium||await chromium.executablePath(),args:systemChromium?['--no-sandbox','--disable-dev-shm-usage']:chromium.args.filter(arg=>!['--disable-web-security','--allow-running-insecure-content','--single-process'].includes(arg)),headless:true});
  await deletionBrowserChecks({browser,base,key});
  await browserChecks({browser,base,key,state,outputDir});console.log('PASS phone, host, TV and A4 browser checks');
- await readinessChecks({base,key});await requestPauseChecks({base,key,db});await readinessBrowserChecks({browser,base,key});await browser.close();browser=null;
+ await readinessChecks({base,key});await requestPauseChecks({base,key,db});await readinessBrowserChecks({browser,base,key});await appearanceChecks({browser,base,key,db,outputDir,stop,start});await browser.close();browser=null;
  await recoveryChecks({base,key,query,stop,start});console.log('PASS hard-crash and graceful-restart recovery');
  if(process.env.TAMBOLA_LEGACY_TESTS==='1'){
   for(const [command,args] of [['python3',['tests/m5m6-integration.py','--priority']],['python3',['tests/m7-party-rehearsal.py']],[process.execPath,['tests/m7-live.mjs','--clients=25']]]){

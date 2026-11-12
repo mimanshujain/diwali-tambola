@@ -60,6 +60,8 @@ try{
  await api('/games',{cookie:alice,method:'POST',headers:{origin:'https://evil.example'},body:{name:'CSRF'},expected:403});
  const foreign=[['GET',''],['GET','/display'],['GET','/calls'],['GET','/categories'],['GET','/admin/players'],['GET','/admin/claims'],['GET','/admin/eligible-winners'],['GET','/admin/audit'],['GET','/admin/ticket-conflicts'],['GET','/admin/power-requests'],['POST','/start'],['POST','/pause'],['POST','/resume'],['POST','/tickets'],['POST','/calls/manual'],...['stop','release-stop','end','timer','call-next','tv-pair','tv-revoke','categories'].map(s=>['POST','/admin/'+s])];
  for(const [method,suffix] of foreign)await api('/games/'+other.id+suffix,{cookie:alice,method,body:method==='POST'?{}:undefined,expected:404});
+ await api('/games/'+other.id+'/admin/appearance',{cookie:alice,method:'POST',body:{name:'Foreign',themeId:'birthday'},expected:404});
+ await api('/games/'+id+'/admin/appearance',{cookie:alice,method:'POST',body:{name:game.name,themeId:'elegant',welcomeMessage:'Welcome, guests'},expected:201});
  await api('/GAMES/'+other.id+'/ADMIN/STOP',{cookie:alice,method:'POST',body:{},expected:404});
  await api('/admin/'+other.id,{cookie:alice,expected:404});await api('/admin/'+other.id+'/tv-qr.svg',{cookie:alice,expected:404});
  const dummy=randomUUID();for(const suffix of ['players/'+dummy+'/approve','players/'+dummy+'/withdraw','players/'+dummy+'/reset-access','players/'+dummy+'/reissue','categories/'+dummy+'/resolve','categories/'+dummy+'/sudden-death/start','categories/'+dummy+'/sudden-death/pause','claims/'+dummy+'/review','claims/'+dummy+'/confirm','claims/'+dummy+'/cancel','power-requests/'+dummy+'/approve','power-requests/'+dummy+'/reject'])await api('/games/'+other.id+'/admin/'+suffix,{cookie:alice,method:'POST',body:{},expected:404});
@@ -73,7 +75,7 @@ try{
  assert.ok(guest.token);await api('/games/'+id+'/admin/players/'+guest.player.id+'/approve',{cookie:alice,method:'POST',expected:201});
  await api('/games/'+id+'/players/me/submit',{method:'POST',headers:{authorization:'Bearer '+guest.token},body:{ticketId:guest.ticket.id},expected:201});
  await api('/games/'+other.id+'/players/me',{headers:{authorization:'Bearer '+guest.token},expected:401});
- const publicDisplay=(await api('/games/'+id+'/guest-display')).data;assert.ok(!('players' in publicDisplay));assert.ok(!JSON.stringify(publicDisplay).includes('Festival Guest'));
+ const publicDisplay=(await api('/games/'+id+'/guest-display')).data;assert.equal(publicDisplay.game.themeId,'elegant');assert.equal(publicDisplay.game.welcomeMessage,'Welcome, guests');assert.ok(!('players' in publicDisplay));assert.ok(!JSON.stringify(publicDisplay).includes('Festival Guest'));
  await api('/games/'+id+'/display',{expected:401});
  const pair=(await api('/games/'+id+'/admin/tv-pair',{cookie:alice,method:'POST',expected:201})).data;
  assert.match(pair.url,/\/screen#[A-F0-9]{10}$/);assert.match(pair.qr,/<svg/);

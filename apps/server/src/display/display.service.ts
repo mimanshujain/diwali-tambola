@@ -70,7 +70,7 @@ export class DisplayService {
     ]);
     return {
       game: {
-        id: game.id, name: game.name, status: game.status,
+        id: game.id, name: game.name, status: game.status, themeId:game.themeId, themeVersion:game.themeVersion, welcomeMessage:game.welcomeMessage,
         nextCallAt: game.nextCallAt, emergencyStopped: game.emergencyStopped, endedByAdmin: game.endedByAdmin,
       },
       calls: calls.map(call => ({number: call.number, sequence: call.sequence})), serverTime:new Date().toISOString(),
@@ -101,7 +101,7 @@ export class DisplayService {
        JOIN tickets t ON t.player_id=p.id AND t.status IN ('ASSIGNED','SUBMITTED')
        WHERE p.id=$1 AND p.game_id=$2`,[playerId,gameId]);
     if(!row.rows[0])throw new NotFoundException('Active ticket not found');
-    return {gameName:row.rows[0].game_name,joinCode:row.rows[0].join_code,playerName:row.rows[0].name,ticketNumber:row.rows[0].ticket_number,
+    return {appearance:await this.tambola.getGame(gameId),gameName:row.rows[0].game_name,joinCode:row.rows[0].join_code,playerName:row.rows[0].name,ticketNumber:row.rows[0].ticket_number,
       grid:row.rows[0].grid,status:row.rows[0].status};
   }
 }

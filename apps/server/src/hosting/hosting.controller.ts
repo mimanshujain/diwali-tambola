@@ -14,9 +14,9 @@ export class HostingController {
 
   @Get('/') @Header('Content-Type','text/html; charset=utf-8')
   home():string {
-    if(!cloudMode())return html('Diwali Tambola','<main class="wrap"><h1>🪔 Diwali Tambola</h1><a class="button" href="/admin">Open host desk</a></main>','');
-    return html('Diwali Tambola · Play together',`<main class="wrap stack" style="max-width:900px;padding-top:8vh">
-      <div class="brand">🪔 DIWALI TAMBOLA</div><header><div class="eyebrow">Good company. A little luck.</div><h1>Bring everyone<br>into the game.</h1><p class="muted">One screen for the room. A ticket on every phone.</p></header>
+    if(!cloudMode())return html('Tambola','<main class="wrap"><h1>✦ Tambola</h1><a class="button" href="/admin">Open host desk</a></main>','');
+    return html('Tambola · Play together',`<main class="wrap stack" style="max-width:900px;padding-top:8vh">
+      <div class="brand">✦ TAMBOLA</div><header><div class="eyebrow">Good company. A little luck.</div><h1>Bring everyone<br>into the game.</h1><p class="muted">One screen for the room. A ticket on every phone.</p></header>
       <div class="grid"><section class="panel"><h2>Join the celebration</h2><p>Your host has a six-character game code. No account or phone number needed.</p><form id="join"><label>Game code<input id="code" maxlength="6" minlength="6" required autocapitalize="characters" autocomplete="off" placeholder="ABC234" style="text-transform:uppercase"></label><button>Join game →</button></form></section>
       <section class="panel"><h2>Host your evening</h2><p>Create games, invite guests, set prizes and run the show from your phone.</p><a class="button" href="/admin">Open host desk →</a><p class="small" style="margin-top:20px">Hosting is currently by invitation.</p></section></div>
       <a href="/screen">Connect a TV display</a><p class="small">Guests: your name appears on the party TV. Keep your recovery code private. Hosts: Google is used only to sign you in; we store your account ID, name and email.</p></main>`,
@@ -25,7 +25,7 @@ export class HostingController {
 
   @Get('auth/login') @Header('Content-Type','text/html; charset=utf-8')
   login():string {
-    requireCloud();return html('Sign in · Diwali Tambola',`<main class="wrap stack" style="max-width:560px;padding-top:12vh"><a href="/" class="brand">🪔 DIWALI TAMBOLA</a><section class="panel"><div class="eyebrow">Your host desk</div><h1>A celebration<br>of your own.</h1><p>Sign in with your invited Google account to manage your games.</p><a class="button" href="/auth/google">Continue with Google</a><p class="small" style="margin-top:24px">Only you can manage your games. Guests join separately using your game code.</p></section><a href="/">Joining as a guest? Enter a game code →</a></main>`,'');
+    requireCloud();return html('Sign in · Tambola',`<main class="wrap stack" style="max-width:560px;padding-top:12vh"><a href="/" class="brand">✦ TAMBOLA</a><section class="panel"><div class="eyebrow">Your host desk</div><h1>A celebration<br>of your own.</h1><p>Sign in with your invited Google account to manage your games.</p><a class="button" href="/auth/google">Continue with Google</a><p class="small" style="margin-top:24px">Only you can manage your games. Guests join separately using your game code.</p></section><a href="/">Joining as a guest? Enter a game code →</a></main>`,'');
   }
 
   @Get('auth/google')
@@ -46,7 +46,7 @@ export class HostingController {
 
   @Get('screen') @Header('Content-Type','text/html; charset=utf-8')
   screen():string {
-    requireCloud();return html('Connect TV · Diwali Tambola',`<main class="wrap stack" style="max-width:650px;padding-top:10vh"><div class="brand">🪔 DIWALI TAMBOLA</div><section class="panel"><h1>Give the room<br>a front-row seat.</h1><p>On your phone, open your game console → TV display &amp; guest access → Pair a TV. Enter the ten-character code here.</p><form id="pair"><label>TV pairing code<input id="code" maxlength="12" required autocomplete="off" autocapitalize="characters" placeholder="A1B2C D3E4F" style="font-size:28px;letter-spacing:.12em;text-transform:uppercase"></label><button id="connect">Connect this TV →</button></form><p id="error" role="status" class="notice"></p><p class="small">This connects only the display. Host controls stay on your phone. Access lasts 24 hours, or until your host disconnects TVs.</p></section></main>`,String.raw`
+    requireCloud();return html('Connect TV · Tambola',`<main class="wrap stack" style="max-width:650px;padding-top:10vh"><div class="brand">✦ TAMBOLA</div><section class="panel"><h1>Give the room<br>a front-row seat.</h1><p>On your phone, open your game console → TV display &amp; guest access → Pair a TV. Enter the ten-character code here.</p><form id="pair"><label>TV pairing code<input id="code" maxlength="12" required autocomplete="off" autocapitalize="characters" placeholder="A1B2C D3E4F" style="font-size:28px;letter-spacing:.12em;text-transform:uppercase"></label><button id="connect">Connect this TV →</button></form><p id="error" role="status" class="notice"></p><p class="small">This connects only the display. Host controls stay on your phone. Access lasts 24 hours, or until your host disconnects TVs.</p></section></main>`,String.raw`
       const input=document.getElementById('code'),button=document.getElementById('connect');
       async function connect(){button.disabled=true;try{const r=await fetch('/screen/connect',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:input.value})});const data=await r.json();if(!r.ok)throw Error(data.message||'Unable to connect');location.replace(data.url);}catch(e){document.getElementById('error').textContent=e.message;}finally{button.disabled=false;}}
       document.getElementById('pair').onsubmit=e=>{e.preventDefault();connect();};
