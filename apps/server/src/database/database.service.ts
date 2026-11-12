@@ -1,3 +1,4 @@
+import { GAME_APPEARANCE_MIGRATION } from './migrations/011_game_appearance.js';
 import { cloudMode } from '../hosting/context.js';
 import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -182,6 +183,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       if (!hosted.rowCount) {
         await client.query(HOSTED_ACCOUNTS_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['010_hosted_accounts']);
+      }
+      const appearance = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['011_game_appearance']);
+      if (!appearance.rowCount) {
+        await client.query(GAME_APPEARANCE_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['011_game_appearance']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');

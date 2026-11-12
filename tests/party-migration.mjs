@@ -1,4 +1,5 @@
 // Isolated legacy-schema upgrade test. The caller supplies a dedicated pg Client.
+import {GAME_APPEARANCE_MIGRATION} from '../apps/server/dist/database/migrations/011_game_appearance.js';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {MILESTONE_2_MIGRATION} from '../apps/server/dist/database/migrations/001_game_engine.js';
@@ -19,6 +20,8 @@ export async function migrationChecks(client){
   await client.query("INSERT INTO games(id,name,remaining_numbers,join_code) VALUES($1,'Legacy game',$2,'ABC234')",[id,Array.from({length:90},(_,i)=>i+1)]);
   await client.query("INSERT INTO players(id,game_id,name,mobile,device_id,token_hash) VALUES($1,$2,'Legacy player','15550001234',$3,'test-hash')",[playerId,id,randomUUID()]);
   for(let i=1;i<=2;i++)await client.query("INSERT INTO tickets(id,game_id,ticket_number,grid,numbers) VALUES($1,$2,$3,'[]',$4)",[randomUUID(),id,i,numbers]);
+  await client.query(GAME_APPEARANCE_MIGRATION);
+  assert.equal((await client.query('SELECT theme_id FROM games WHERE id=$1',[id])).rows[0].theme_id,'diwali');
   await client.query(PARTY_OPERATIONS_MIGRATION);
   assert.equal((await client.query('SELECT approved FROM players WHERE id=$1',[playerId])).rows[0].approved,true);
   assert.equal((await client.query('SELECT count(*)::int AS count FROM tickets WHERE game_id=$1',[id])).rows[0].count,2);
