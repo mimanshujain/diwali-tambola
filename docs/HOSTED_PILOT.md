@@ -2,6 +2,8 @@
 
 One website serves independent organizers, their guests and their party TVs. Organizers sign in with an invited Google account; guests still join with a game code and name. The Raspberry Pi setup remains the default (`HOSTING_MODE=lan`).
 
+For a walkthrough of the host, guest and TV flows and where each environment variable belongs, see the [hosted implementation and environment guide](HOSTED_IMPLEMENTATION.md).
+
 ## What changes in cloud mode
 
 - Each game belongs to one host. Lists, controls, tickets, claims and printing require that owner. A legacy `ADMIN_TOKEN` does not grant cloud access.

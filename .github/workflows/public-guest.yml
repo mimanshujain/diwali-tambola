@@ -41,6 +41,9 @@ jobs:
       - name: Validate host operations and ticket recovery
         run: node tests/party-operations.mjs
 
+      - name: Validate confirmed game deletion
+        run: node tests/game-deletion.mjs
+
       - name: Rehearse database backup and restore
         run: node tests/backup-rehearsal.mjs
 

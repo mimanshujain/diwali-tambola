@@ -138,6 +138,27 @@ export class TambolaService {
       FROM games g WHERE ($1::uuid IS NULL OR g.host_id=$1) ORDER BY (g.status='COMPLETED'),g.created_at DESC LIMIT 200`,[hostId()])).rows;
   }
 
+  async deleteGame(gameId:string, confirmationCode:unknown) {
+    this.assertUuid(gameId);
+    await this.database.transaction(async client=>{
+      // Serialize deletion with registration, calls, claim review and tie-breaks.
+      const game=await this.lockGame(client,gameId);
+      if(typeof confirmationCode!=='string'||confirmationCode.trim().toUpperCase()!==game.join_code)
+        throw new BadRequestException('Type this game\'s code to confirm permanent deletion.');
+      // Clear the review reference before deleting the claim it points to.
+      await client.query('UPDATE games SET review_claim_id=NULL,review_resume_after=false WHERE id=$1',[gameId]);
+      // Remove dependants before their referenced rows, atomically. Round deletion
+      // cascades to mini tickets and mini calls; other foreign keys remain intact.
+      for(const table of ['sudden_death_rounds','winners','winner_claims','category_eligibility',
+        'category_outcomes','power_priority_windows','called_numbers','power_requests',
+        'player_powers','ticket_reissue_history','tickets','players','winning_categories','game_events']) {
+        await client.query(`DELETE FROM ${table} WHERE game_id=$1`,[gameId]);
+      }
+      await client.query('DELETE FROM games WHERE id=$1',[gameId]);
+    });
+    return {id:gameId,deleted:true};
+  }
+
   async stopGame(gameId: string, action: 'stop' | 'release' | 'end') {
     this.assertUuid(gameId);
     await this.database.transaction(async client => {

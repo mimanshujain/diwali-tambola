@@ -29,7 +29,7 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 async function start(port){const child=spawn(process.execPath,['--import','./tests/fixtures/google-provider.mjs','apps/server/dist/main.js'],{cwd:root,env:{...env,PORT:String(port)},stdio:['ignore','pipe','pipe']});children.push(child);child.stdout.on('data',b=>logs.push(String(b)));child.stderr.on('data',b=>logs.push(String(b)));for(let i=0;i<150;i++){if(child.exitCode!==null)throw Error(logs.join('').slice(-3000));try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)return child;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Startup timeout');}
 async function stop(child,signal='SIGTERM'){if(child?.exitCode===null && child.signalCode===null){const done=once(child,'exit');child.kill(signal);await done;}}
 async function rawRequest(path,{method='GET',headers={},body,port=currentPort}={}){
- return new Promise((resolve,reject)=>{const req=httpRequest({host:'127.0.0.1',port,path,method,headers:{host:'localhost:'+tlsPort,...headers}},res=>{const chunks=[];res.on('data',b=>chunks.push(b));res.on('end',()=>resolve(new Response(Buffer.concat(chunks),{status:res.statusCode,headers:Object.fromEntries(Object.entries(res.headers).map(([k,v])=>[k,Array.isArray(v)?v.join(', '):v]))})));});req.on('error',reject);req.end(body);});
+ return new Promise((resolve,reject)=>{const req=httpRequest({host:'127.0.0.1',port,path,method,headers:{host:'localhost:'+tlsPort,...(body===undefined?{}:{'content-length':Buffer.byteLength(body)}),...headers}},res=>{const chunks=[];res.on('data',b=>chunks.push(b));res.on('end',()=>resolve(new Response(Buffer.concat(chunks),{status:res.statusCode,headers:Object.fromEntries(Object.entries(res.headers).map(([k,v])=>[k,Array.isArray(v)?v.join(', '):v]))})));});req.on('error',reject);req.end(body);});
 }
 async function api(path,{cookie='',method='GET',body,headers={},port=currentPort,expected=200}={}){
  const r=await rawRequest(path,{port,method,headers:{host:'localhost:'+tlsPort,origin,'content-type':'application/json',...(cookie?{cookie}:{}),...headers},body:body===undefined?undefined:JSON.stringify(body)});
@@ -87,6 +87,15 @@ try{
  await api('/tv/'+game.joinCode,{cookie:screen});await api('/tv/'+id+'/qr.svg',{cookie:screen});
  await api('/games/'+id+'/admin/tv-revoke',{cookie:alice,method:'POST',expected:201});await api('/games/'+id+'/display',{cookie:screen,expected:401});
  const expired=(await api('/games/'+id+'/admin/tv-pair',{cookie:alice,method:'POST',expected:201})).data;await db.query('UPDATE display_access SET expires_at=NOW()-INTERVAL \'1 second\' WHERE token_hash=$1',[hash(expired.code)]);await api('/screen/connect',{method:'POST',body:{code:expired.code},expected:401});
+ const deletable=await make(alice,'Delete hosted game'),deletePath='/games/'+deletable.id+'/admin/game',confirmationCode=deletable.joinCode;
+ const deletePair=(await api('/games/'+deletable.id+'/admin/tv-pair',{cookie:alice,method:'POST',expected:201})).data;
+ const deleteScreen=(await api('/screen/connect',{method:'POST',body:{code:deletePair.code},expected:201})).r.headers.get('set-cookie').split(';')[0];
+ await api(deletePath,{cookie:bob,method:'DELETE',body:{confirmationCode},expected:404});
+ await api(deletePath,{cookie:alice,method:'DELETE',body:{confirmationCode:'WRONG'},expected:400});
+ await api(deletePath,{cookie:alice,method:'DELETE',body:{confirmationCode}});
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM display_access WHERE game_id=$1',[deletable.id])).rows[0].n,0);
+ await api('/games/'+deletable.id+'/display',{cookie:deleteScreen,expected:401});
+ assert.equal((await api('/games',{cookie:alice})).data.length,1);
  await db.query("INSERT INTO players(id,game_id,name,device_id,token_hash,approved) SELECT gen_random_uuid(),$1,'Capacity guest '||n,gen_random_uuid(),gen_random_uuid()::text,false FROM generate_series(1,200) n",[other.id]);
  await api('/games/'+other.id+'/players/register',{method:'POST',body:{name:'Over capacity',deviceId:randomUUID()},expected:409});
  console.log('PASS account-free guest workflow and read-only, one-use, revocable TV pairing');
@@ -97,8 +106,20 @@ try{
  proxy.listen(tlsPort,'127.0.0.1');await once(proxy,'listening');
  browser=await playwright.launch({executablePath:process.env.TAMBOLA_CHROMIUM_PATH||await chromium.executablePath(),headless:true,args:chromium?chromium.args.filter(a=>!['--disable-web-security','--allow-running-insecure-content','--single-process'].includes(a)):['--no-sandbox','--disable-dev-shm-usage']});
  const host=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844}});await host.addCookies([{name:'__Host-tambola-host',value:cookieToken,url:origin,secure:true,httpOnly:true,sameSite:'Lax'}]);
- const page=await host.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/admin');await page.waitForSelector('.game-card');assert.equal(await page.locator('.game-card').count(),1);assert.equal(await page.locator('#key').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(output,'host-phone.png'),fullPage:true});
- await page.goto(origin+'/admin/'+id);await page.waitForFunction(()=>document.querySelector('#name').textContent.includes('Alice'));await page.locator('#access-panel summary').click();await page.locator('#pair-tv').click();await page.waitForFunction(()=>document.querySelector('#pair-code').textContent.length>5);const pairingLink=await page.locator('#pair-link').getAttribute('href');
+ const page=await host.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ // Identity and logout must be available without a second profile request.
+ await page.route('**/auth/me',route=>route.abort());
+ async function checkHostAccount(path){
+  await page.goto(origin+path);
+  const account=page.getByRole('region',{name:'Signed-in host'});
+  assert.equal(await account.locator('strong').textContent(),'alice');
+  assert.equal(await account.locator('small').textContent(),'alice@example.com');
+  assert.equal(await account.locator('.host-avatar').textContent(),'A');
+  const signOut=await account.getByRole('button',{name:'Sign out',exact:true}).boundingBox();
+  assert.ok(signOut&&signOut.y>=0&&signOut.y+signOut.height<=844,'Sign out must be visible without scrolling');
+ }
+ await checkHostAccount('/admin');await page.waitForSelector('.game-card');assert.equal(await page.locator('.game-card').count(),1);assert.equal(await page.locator('#key').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(output,'host-phone.png'),fullPage:true});
+ await checkHostAccount('/admin/'+id);await page.waitForFunction(()=>document.querySelector('#name').textContent.includes('Alice'));await page.locator('#access-panel summary').click();await page.locator('#pair-tv').click();await page.waitForFunction(()=>document.querySelector('#pair-code').textContent.length>5);const pairingLink=await page.locator('#pair-link').getAttribute('href');
  const tvContext=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1920,height:1080}}),tv=await tvContext.newPage();tv.on('pageerror',e=>errors.push(e.message));await tv.goto(pairingLink);await tv.waitForURL('**/tv/'+game.joinCode);await tv.waitForFunction(()=>document.querySelector('#lobbyCode').textContent.length===6&&document.querySelector('#roster').textContent.includes('Festival Guest'));assert.equal(new URL(tv.url()).hash,'');await tv.screenshot({path:join(output,'paired-tv.png')});
  page.once('dialog',d=>d.accept());await page.locator('#revoke-tv').click();await tv.waitForURL('**/screen');
  const guestContext=await browser.newContext({ignoreHTTPSErrors:true}),landing=await guestContext.newPage();await landing.goto(origin);await landing.locator('#code').fill(game.joinCode);await landing.locator('#join button').click();await landing.waitForURL('**/join/'+id);
