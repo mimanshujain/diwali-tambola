@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Post } from '@nestjs/common';
 import { TambolaService } from './tambola.service.js';
 import { assertAdmin } from '../security/admin.js';
 
@@ -17,6 +17,10 @@ export class GamesController {
 
   @Get()
   listGames(@Headers('x-admin-key') key?:string) { assertAdmin(key);return this.tambola.listGames(); }
+  @Delete(':gameId/admin/game')
+  deleteGame(@Param('gameId') id:string,@Headers('x-admin-key') key:string|undefined,@Body() body:{confirmationCode?:unknown}) {
+    assertAdmin(key);return this.tambola.deleteGame(id,body?.confirmationCode);
+  }
   @Post(':gameId/admin/stop')
   stop(@Param('gameId') id:string,@Headers('x-admin-key') key?:string) {assertAdmin(key);return this.tambola.stopGame(id,'stop');}
   @Post(':gameId/admin/release-stop')
