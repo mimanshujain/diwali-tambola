@@ -83,6 +83,15 @@ try{
  await api('/tv/'+game.joinCode,{cookie:screen});await api('/tv/'+id+'/qr.svg',{cookie:screen});
  await api('/games/'+id+'/admin/tv-revoke',{cookie:alice,method:'POST',expected:201});await api('/games/'+id+'/display',{cookie:screen,expected:401});
  const expired=(await api('/games/'+id+'/admin/tv-pair',{cookie:alice,method:'POST',expected:201})).data;await db.query('UPDATE display_access SET expires_at=NOW()-INTERVAL \'1 second\' WHERE token_hash=$1',[hash(expired.code)]);await api('/screen/connect',{method:'POST',body:{code:expired.code},expected:401});
+ const deletable=await make(alice,'Delete hosted game'),deletePath='/games/'+deletable.id+'/admin/game',confirmationCode=deletable.joinCode;
+ const deletePair=(await api('/games/'+deletable.id+'/admin/tv-pair',{cookie:alice,method:'POST',expected:201})).data;
+ const deleteScreen=(await api('/screen/connect',{method:'POST',body:{code:deletePair.code},expected:201})).r.headers.get('set-cookie').split(';')[0];
+ await api(deletePath,{cookie:bob,method:'DELETE',body:{confirmationCode},expected:404});
+ await api(deletePath,{cookie:alice,method:'DELETE',body:{confirmationCode:'WRONG'},expected:400});
+ await api(deletePath,{cookie:alice,method:'DELETE',body:{confirmationCode}});
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM display_access WHERE game_id=$1',[deletable.id])).rows[0].n,0);
+ await api('/games/'+deletable.id+'/display',{cookie:deleteScreen,expected:401});
+ assert.equal((await api('/games',{cookie:alice})).data.length,1);
  await db.query("INSERT INTO players(id,game_id,name,device_id,token_hash,approved) SELECT gen_random_uuid(),$1,'Capacity guest '||n,gen_random_uuid(),gen_random_uuid()::text,false FROM generate_series(1,200) n",[other.id]);
  await api('/games/'+other.id+'/players/register',{method:'POST',body:{name:'Over capacity',deviceId:randomUUID()},expected:409});
  console.log('PASS account-free guest workflow and read-only, one-use, revocable TV pairing');

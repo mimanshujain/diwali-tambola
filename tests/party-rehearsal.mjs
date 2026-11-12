@@ -9,6 +9,7 @@ import {tmpdir} from 'node:os';
 import {resolve,join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
+import {deletionChecks,deletionBrowserChecks} from './game-deletion.mjs';
 import {operations,recoveryChecks} from './party-operations.mjs';
 import {migrationChecks} from './party-migration.mjs';
 import {browserChecks} from './party-browser.mjs';
@@ -43,8 +44,9 @@ try{
  await pg.initialise();await pg.start();await pg.createDatabase('tambola');db=new Pool({connectionString:env.DATABASE_URL});await start();
  const client=await db.connect();try{await migrationChecks(client);console.log('PASS legacy migration');}finally{client.release();}
  await notificationChecks({base,key,database:env.DATABASE_URL});
- const query=(...args)=>db.query(...args),state=await operations({base,key,query});console.log('PASS operations and concurrent ticket guards');
+ const query=(...args)=>db.query(...args);await deletionChecks({base,key,query});const state=await operations({base,key,query});console.log('PASS operations and concurrent ticket guards');
  browser=await playwright.launch({executablePath:systemChromium||await chromium.executablePath(),args:systemChromium?['--no-sandbox','--disable-dev-shm-usage']:chromium.args.filter(arg=>!['--disable-web-security','--allow-running-insecure-content','--single-process'].includes(arg)),headless:true});
+ await deletionBrowserChecks({browser,base,key});
  await browserChecks({browser,base,key,state,outputDir});console.log('PASS phone, host, TV and A4 browser checks');
  await readinessChecks({base,key});await requestPauseChecks({base,key,db});await readinessBrowserChecks({browser,base,key});await browser.close();browser=null;
  await recoveryChecks({base,key,query,stop,start});console.log('PASS hard-crash and graceful-restart recovery');

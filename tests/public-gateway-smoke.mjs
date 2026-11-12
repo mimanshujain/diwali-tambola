@@ -76,3 +76,5 @@ if(restored.data.ticket.id!==registration.data.ticket.id)throw new Error('Recove
 for(const path of ['/stop','/release-stop','/timer','/call-next','/categories','/players/'+registration.data.player.id+'/approve','/players/'+registration.data.player.id+'/reset-access']) {
  expectStatus('Blocked private host operation '+path,await request(edge,'/games/'+id+'/admin'+path,{method:'POST',body:{},headers:{'x-admin-key':process.env.ADMIN_TOKEN}}),[403,404]);
 }
+
+expectStatus('Blocked game deletion',await request(edge,'/games/'+id+'/admin/game',{method:'DELETE',body:{confirmationCode:code},headers:{'x-admin-key':process.env.ADMIN_TOKEN}}),[403,404]);

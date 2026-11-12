@@ -25,6 +25,12 @@ async function request(path,method='GET',body){
  }catch(error){if(error.name==='AbortError')throw Error('Request timed out. Refreshing the last confirmed state.');throw error;}finally{clearTimeout(timeout);}
 }
 async function run(button,action){if(pendingButtons.has(button))return;pendingButtons.add(button);button.disabled=true;try{await action();}catch(error){say(error.message);}finally{pendingButtons.delete(button);button.disabled=false;if(typeof controls==='function'&&display)controls();}}
+async function deleteGame(game){
+ const confirmationCode=prompt('Permanently delete "'+game.name+'"? This ends any active play and removes its players, tickets, calls, prizes and history. This cannot be undone in the app. Type '+game.joinCode+' to delete.');
+ if(confirmationCode===null)return false;
+ if(confirmationCode.trim().toUpperCase()!==game.joinCode){say('Game not deleted. The confirmation code did not match.');return false;}
+ await request('/games/'+encodeURIComponent(game.id)+'/admin/game','DELETE',{confirmationCode});return true;
+}
 function empty(container,message){container.replaceChildren(el('div',message,'empty'));}
 `;
 
@@ -45,7 +51,7 @@ function render(){
  for(const game of visible){const card=el('article','','panel game-card');const top=el('div','','row between');top.append(el('span',game.emergencyStopped?'STOPPED':game.status,'pill'),el('span',game.joinCode,'code'));card.append(top,el('h2',game.name));
  const metrics=el('div','','metrics');for(const [value,label] of [[game.playerCount,'players'],[game.submittedCount,'submitted'],[game.calledCount,'called']]){const metric=el('div','','metric');metric.append(el('strong',String(value)),el('small',label));metrics.append(metric);}card.append(metrics);
  if(game.recoveredAt)card.append(el('p','Recovered after restart · ready for host review','small'));
- const link=el('a','Open console →','button');link.href='/admin/'+game.id;card.append(link);list.append(card);}
+ const link=el('a','Open console →','button');link.href='/admin/'+game.id;const actions=el('div','','row');actions.append(link,button('Delete game…',async()=>{if(await deleteGame(game)){await load();say('Game deleted.');}},'red small-button'));card.append(actions);list.append(card);}
  if(!visible.length)empty(list,'No games here yet. Create one below or change the filter.');
 }
 async function load(){if(!hosted&&!keyBox.value)return;games=await request('/games');render();}
@@ -72,7 +78,7 @@ export function adminPage(_gameId:string):string {
  <section id="controls" class="panel controls"><div class="row between"><div><div class="eyebrow">Latest call</div><div id="latest" class="status-number">—</div></div><div><div class="eyebrow">Next call in</div><div id="timer" class="clock">—</div></div><button id="stop" class="kill">■ Emergency stop</button></div>
  <div class="row"><button id="start">Start game</button><button id="pause" class="ghost">Pause</button><button id="resume" class="secondary">Resume</button><button id="release" class="red" hidden>Release stop</button><button id="next" class="secondary">Call next now →</button><span id="progress" class="small"></span></div>
  <div class="toolbar"><div class="row"><button id="add-time" class="ghost">+30 seconds</button><button id="reset-time" class="ghost">Reset countdown</button><label style="margin:0;max-width:180px">Call interval (seconds)<input id="interval" type="number" value="30" min="10" max="86400"></label><button id="save-interval" class="ghost">Set interval & reset</button></div></div>
- <details><summary>Manual call & ending the game</summary><div class="row"><input id="manual" aria-label="Manual number" placeholder="1–90" type="number" min="1" max="90" style="width:110px"><button id="manualBtn" class="ghost">Call this number</button><button id="end" class="red">End game…</button></div><p class="small">Emergency stop freezes all draws, including tie-breaks. End game closes play permanently and retains its records.</p></details></section>
+ <details><summary>Manual call, ending & deleting</summary><div class="row"><input id="manual" aria-label="Manual number" placeholder="1–90" type="number" min="1" max="90" style="width:110px"><button id="manualBtn" class="ghost">Call this number</button><button id="end" class="red">End game…</button><button id="delete-game" class="red">Delete game…</button></div><p class="small">Emergency stop freezes all draws, including tie-breaks. End game closes play permanently and retains its records. Delete game permanently removes all records for this game.</p></details></section>
  <div class="admin-grid">
  <details id="players-panel" class="panel" open><summary>Players & tickets <span id="players-count" class="count"></span></summary><div class="section-body"><div class="row"><input id="player-search" type="search" placeholder="Find a player" aria-label="Find a player" style="flex:1"><button id="print-all" class="ghost">Print all tickets</button></div><p id="conflicts" class="notice"></p><div id="players" class="list"></div></div></details>
  <details id="prizes-panel" class="panel" open><summary>Prize categories <span id="categories-count" class="count"></span></summary><div class="section-body"><div id="categories" class="list"></div><details><summary>Add a prize</summary><form id="category-form"><label>Name<input id="category-name" maxlength="80" required placeholder="Diwali Early Seven"></label><label>Winning rule<select id="category-rule">${rules}</select></label><label>Prize or description<input id="category-prize" maxlength="200" placeholder="Gift hamper"></label><label>Ties<select id="category-policy"><option value="SHARED_PRIZE">Share the prize</option><option value="SUDDEN_DEATH">Sudden-death round</option></select></label><button id="add-category">Add category</button></form></details><p class="small">Set up and edit prizes before starting. Any Two Lines requires two complete rows. All Odd / All Even requires every matching number on the ticket.</p></div></details>
@@ -160,6 +166,7 @@ $('#switch-game').onchange=()=>location.href='/admin/'+encodeURIComponent($('#sw
 $('#load').onclick=()=>run($('#load'),async()=>{await loadGames();await refresh();});$('#player-search').oninput=renderPlayers;
 for(const action of ['start','pause','resume'])$('#'+action).onclick=()=>run($('#'+action),()=>act('/'+action));
 $('#stop').onclick=()=>run($('#stop'),()=>act('/admin/stop'));$('#release').onclick=()=>run($('#release'),()=>act('/admin/release-stop'));
+$('#delete-game').onclick=()=>run($('#delete-game'),async()=>{if(await deleteGame(display.game))location.href='/admin';});
 $('#end').onclick=()=>run($('#end'),async()=>{if(prompt('Type '+display.game.joinCode+' to end this game permanently.')===display.game.joinCode)await act('/admin/end');});
 $('#next').onclick=()=>run($('#next'),()=>act('/admin/call-next',{expectedSequence:display.calls.length+1}));
 $('#add-time').onclick=()=>run($('#add-time'),()=>act('/admin/timer',{seconds:Math.min(86400,secondsLeft()+30)}));
