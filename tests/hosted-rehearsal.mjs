@@ -104,8 +104,20 @@ try{
  proxy.listen(tlsPort,'127.0.0.1');await once(proxy,'listening');
  browser=await playwright.launch({executablePath:process.env.TAMBOLA_CHROMIUM_PATH||await chromium.executablePath(),headless:true,args:chromium?chromium.args.filter(a=>!['--disable-web-security','--allow-running-insecure-content','--single-process'].includes(a)):['--no-sandbox','--disable-dev-shm-usage']});
  const host=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844}});await host.addCookies([{name:'__Host-tambola-host',value:cookieToken,url:origin,secure:true,httpOnly:true,sameSite:'Lax'}]);
- const page=await host.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/admin');await page.waitForSelector('.game-card');assert.equal(await page.locator('.game-card').count(),1);assert.equal(await page.locator('#key').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(output,'host-phone.png'),fullPage:true});
- await page.goto(origin+'/admin/'+id);await page.waitForFunction(()=>document.querySelector('#name').textContent.includes('Alice'));await page.locator('#access-panel summary').click();await page.locator('#pair-tv').click();await page.waitForFunction(()=>document.querySelector('#pair-code').textContent.length>5);const pairingLink=await page.locator('#pair-link').getAttribute('href');
+ const page=await host.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ // Identity and logout must be available without a second profile request.
+ await page.route('**/auth/me',route=>route.abort());
+ async function checkHostAccount(path){
+  await page.goto(origin+path);
+  const account=page.getByRole('region',{name:'Signed-in host'});
+  assert.equal(await account.locator('strong').textContent(),'alice');
+  assert.equal(await account.locator('small').textContent(),'alice@example.com');
+  assert.equal(await account.locator('.host-avatar').textContent(),'A');
+  const signOut=await account.getByRole('button',{name:'Sign out',exact:true}).boundingBox();
+  assert.ok(signOut&&signOut.y>=0&&signOut.y+signOut.height<=844,'Sign out must be visible without scrolling');
+ }
+ await checkHostAccount('/admin');await page.waitForSelector('.game-card');assert.equal(await page.locator('.game-card').count(),1);assert.equal(await page.locator('#key').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(output,'host-phone.png'),fullPage:true});
+ await checkHostAccount('/admin/'+id);await page.waitForFunction(()=>document.querySelector('#name').textContent.includes('Alice'));await page.locator('#access-panel summary').click();await page.locator('#pair-tv').click();await page.waitForFunction(()=>document.querySelector('#pair-code').textContent.length>5);const pairingLink=await page.locator('#pair-link').getAttribute('href');
  const tvContext=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1920,height:1080}}),tv=await tvContext.newPage();tv.on('pageerror',e=>errors.push(e.message));await tv.goto(pairingLink);await tv.waitForURL('**/tv/'+game.joinCode);await tv.waitForFunction(()=>document.querySelector('#lobbyCode').textContent.length===6&&document.querySelector('#roster').textContent.includes('Festival Guest'));assert.equal(new URL(tv.url()).hash,'');await tv.screenshot({path:join(output,'paired-tv.png')});
  page.once('dialog',d=>d.accept());await page.locator('#revoke-tv').click();await tv.waitForURL('**/screen');
  const guestContext=await browser.newContext({ignoreHTTPSErrors:true}),landing=await guestContext.newPage();await landing.goto(origin);await landing.locator('#code').fill(game.joinCode);await landing.locator('#join button').click();await landing.waitForURL('**/join/'+id);

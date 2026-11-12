@@ -1,17 +1,54 @@
 import { appearanceFields, appearanceEditorJs } from './appearance-editor.js';
-import { cloudMode } from '../hosting/context.js';
+import { cloudMode, hostContext } from '../hosting/context.js';
 import { html, adminSidebar } from './theme.js';
 import { RULE_LABELS } from '../winners/domain/rules.js';
 
-function authPanel(label:string):string {
- return cloudMode() ? `<style>@media(max-width:600px){.host-auth{flex-wrap:wrap}.host-auth>div{flex-basis:100%!important}.host-auth>button{flex:1}}</style><div class="panel auth host-auth"><input id="key" type="hidden"><div style="flex:1;min-width:0"><div class="eyebrow">Your private host account</div><span id="host-account" style="overflow-wrap:anywhere">Signed in</span></div><button id="load" class="ghost">Refresh</button><button id="sign-out" type="button" class="ghost">Sign out</button></div>` : `<div class="panel auth"><label>Admin key<input id="key" type="password" autocomplete="off" placeholder="Your private host key"></label><button id="load">Unlock ${label}</button></div>`;
+function escapeHtml(value: string): string {
+ return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function hostAccountPanel(): string {
+ if (!cloudMode()) return '';
+
+ const host = hostContext.getStore();
+ const email = host?.email ?? '';
+ const name = host?.name.trim() || email || 'Signed in';
+ const initials = name.split(/\s+/u).slice(0, 2).map(word => Array.from(word)[0]).join('').toUpperCase();
+
+ return `<style>
+ .host-account{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px}
+ .host-avatar{display:grid;place-items:center;width:42px;height:42px;flex:0 0 auto;border-radius:50%;background:var(--gold);color:#261326;font-weight:800}
+ .host-identity{flex:1;min-width:120px;overflow-wrap:anywhere}
+ .host-identity strong,.host-identity small{display:block}
+ .host-account-actions{display:flex;gap:8px;flex-wrap:wrap}
+ .host-account-actions button{white-space:nowrap}
+ @media(max-width:560px){.host-account-actions{width:100%}.host-account-actions button{flex:1}}
+ </style>
+ <section id="host-account" class="panel host-account" aria-label="Signed-in host">
+  <input id="key" type="hidden">
+  <span class="host-avatar" aria-hidden="true">${escapeHtml(initials)}</span>
+  <div class="host-identity"><strong>${escapeHtml(name)}</strong>${email ? `<small>${escapeHtml(email)}</small>` : ''}</div>
+  <div class="host-account-actions">
+   <button id="load" type="button" class="ghost">Refresh</button>
+   <button id="sign-out" type="button">Sign out</button>
+  </div>
+ </section>`;
+}
+
+function lanKeyPanel(label: 'games' | 'controls'): string {
+ if (cloudMode()) return '';
+ return `<div class="panel auth"><label>Admin key<input id="key" type="password" autocomplete="off" placeholder="Your private host key"></label><button id="load">Unlock ${label}</button></div>`;
 }
 
 const helpers=String.raw`
 const $=s=>document.querySelector(s);
 const hosted=Boolean($('#host-account'));
 const keyBox=$('#key');keyBox.value=hosted?'':sessionStorage.getItem('tambola-admin-key')||'';
-if(hosted){$('#sign-out').onclick=()=>run($('#sign-out'),async()=>{await request('/auth/logout','POST');location.href='/';});sessionStorage.removeItem('tambola-admin-key');fetch('/auth/me',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(h=>$('#host-account').textContent=h.name+' · '+h.email).catch(()=>location.href='/auth/login');}
+if(hosted){
+ const signOut=$('#sign-out');
+ signOut.onclick=()=>run(signOut,async()=>{await request('/auth/logout','POST');location.replace('/');});
+ try{sessionStorage.removeItem('tambola-admin-key');}catch{}
+}
 keyBox.oninput=()=>sessionStorage.setItem('tambola-admin-key',keyBox.value);
 function say(message){$('#message').textContent=message||'';}
 function el(tag,text,className){const node=document.createElement(tag);node.textContent=text??'';if(className)node.className=className;return node;}
@@ -36,10 +73,10 @@ function empty(container,message){container.replaceChildren(el('div',message,'em
 `;
 
 export function homeAdminPage():string {
- return html('Tambola · Host desk',String.raw`
- <div class="admin-shell"><aside class="sidebar"><div class="brand">✦ TAMBOLA</div><nav aria-label="Admin navigation"><a href="/admin" aria-current="page">All games</a><a href="#create-panel">Create a game</a></nav><small>Welcome to the host desk.<br>Let the festivities begin.</small></aside>
- <main class="wrap stack" style="width:100%"><header class="topbar"><div><div class="eyebrow">The host desk</div><h1>Your evening, in play.</h1><p class="muted">Create, switch and manage your Tambola games.</p></div><span id="health" class="connection">Checking server…</span></header>
- ${authPanel('games')}
+ return html('Diwali Tambola · Host desk',String.raw`
+ <div class="admin-shell"><aside class="sidebar"><div class="brand">🪔 DIWALI<br>TAMBOLA</div><nav aria-label="Admin navigation"><a href="/admin" aria-current="page">All games</a><a href="#create-panel">Create a game</a></nav><small>Welcome to the host desk.<br>Let the festivities begin.</small></aside>
+ <main class="wrap stack" style="width:100%">${hostAccountPanel()}<header class="topbar"><div><div class="eyebrow">The host desk</div><h1>Your evening, in play.</h1><p class="muted">Create, switch and manage your Tambola games.</p></div><span id="health" class="connection">Checking server…</span></header>
+ ${lanKeyPanel('games')}
  <p id="message" class="notice" role="status"></p>
  <section><div class="topbar"><h2>Games <span id="game-count" class="pill">0</span></h2><div class="row"><input id="search" type="search" aria-label="Search games" placeholder="Find a game or code" style="width:230px"><select id="filter" aria-label="Filter games" style="width:170px"><option value="active">Active games</option><option value="all">All games</option><option value="COMPLETED">Completed</option></select></div></div><div id="games" class="game-cards"><p class="muted">${cloudMode()?'Loading your games…':'Enter your admin key to load your games.'}</p></div></section>
  <section id="create-panel" class="panel"><div class="eyebrow">A new round of luck</div><h2>Create a game</h2><form id="create-form"><div class="grid"><label>Seconds between calls<input id="interval" type="number" min="10" max="86400" value="30" required></label></div>${appearanceFields}<p class="small">Guests join by name. Approve each player before they submit. Every player receives a private recovery code.</p><button id="create" type="submit">Create game →</button></form></section>
@@ -65,11 +102,11 @@ load().catch(error=>say(error.message));setInterval(()=>load().catch(error=>say(
 
 export function adminPage(_gameId:string):string {
  const rules=Object.entries(RULE_LABELS).map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('');
- return html('Tambola · Game console',String.raw`
+ return html('Diwali Tambola · Game console',String.raw`
  <style>.claim-banner{background:#ffdf75;color:#281800;border:3px solid #fff3bb}.claim-banner strong{font-size:clamp(20px,3vw,30px)}.power-banner{background:#91e6cf;border-color:#d4fff2;color:#123629}.claim-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;max-width:620px;margin:10px 0}.claim-cell{aspect-ratio:1.2;display:grid;place-items:center;background:#fff0d4;color:#402636;border-radius:4px;font-weight:800}.claim-cell.empty{background:var(--occasion-line)}.claim-cell.hit{background:#83e5bb;color:#073829}.claim-cell.latest{background:#00e5ff;color:#081d2a;box-shadow:inset 0 0 0 2px white}.print-dialog{width:min(600px,calc(100vw - 32px));max-height:85vh;background:var(--occasion-panel);color:#fff3dc;border:1px solid var(--occasion-line);border-radius:16px;padding:22px}.print-dialog::backdrop{background:#000b}.print-options{max-height:42vh;overflow:auto;margin:12px 0}.print-option{display:flex;align-items:center;gap:10px;margin:0;padding:9px 4px;color:#fff3dc;font-size:15px;border-bottom:1px solid var(--occasion-line)}.print-option input{width:20px;height:20px;margin:0;flex:none}.print-option span{min-width:0;overflow-wrap:anywhere}#latest{color:#00e5ff}[hidden]{display:none!important}</style>
- <div class="admin-shell">${adminSidebar}<main class="wrap stack" style="width:100%">
+ <div class="admin-shell">${adminSidebar}<main class="wrap stack" style="width:100%">${hostAccountPanel()}
  <header class="topbar"><div><div class="eyebrow"><a href="/admin">Host desk</a> / Game console</div><h1 id="name">Loading game…</h1><div class="row"><span id="status" class="pill">—</span><span id="game-code" class="code"></span></div></div><label>Switch game<select id="switch-game" aria-label="Switch game"><option>Loading…</option></select></label></header>
- ${authPanel('controls')}
+ ${lanKeyPanel('controls')}
  <p id="message" role="status" class="notice"></p><p id="recovery-notice" class="notice"></p>
  <section id="claim-banner" class="panel claim-banner" role="alert" hidden><div class="row between"><strong id="claim-message"></strong><button id="claim-review">Review claim</button></div></section>
  <section id="power-banner" class="panel claim-banner power-banner" role="alert" hidden><div class="row between"><strong id="power-message"></strong><button id="power-review">Review Lucky Strike</button></div></section>
