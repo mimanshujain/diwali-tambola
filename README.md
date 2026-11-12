@@ -1,6 +1,6 @@
 # Diwali Tambola
 
-Want to let other organizers host without a Raspberry Pi? See the [hosted pilot guide](docs/HOSTED_PILOT.md) for invite-only Google sign-in, separate host accounts, TV pairing and the Render deployment. The existing Pi setup stays the default.
+Want to let other organizers host without a Raspberry Pi? Read the [hosted implementation and environment guide](docs/HOSTED_IMPLEMENTATION.md) to understand how host accounts, guest links and TV pairing work. Use the [hosted pilot runbook](docs/HOSTED_PILOT.md) to deploy on Render. The Raspberry Pi setup below uses LAN mode by default.
 
 A festive, self-hosted Tambola game for a Raspberry Pi, with phone tickets, a TV board and a private host console. NestJS 12, TypeScript, PostgreSQL 17, Node 26 and Docker Compose.
 
