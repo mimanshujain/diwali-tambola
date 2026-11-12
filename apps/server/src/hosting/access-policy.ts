@@ -1,5 +1,5 @@
 const uuid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}';
-const game = new RegExp('^/games/(' + uuid + ')(?:/(.*))?$');
+const game = new RegExp('^/games/([^/]+)(?:/(.*))?$');
 export type Access = { kind: 'public' | 'host' | 'screen'; game?: string; reference?: string };
 
 /** Explicit public allowlist. Newly added API routes require a host by default. */
