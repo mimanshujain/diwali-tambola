@@ -5,6 +5,31 @@ export async function commentaryChecks({base,key,db,browser,stop,start,outputDir
  async function req(path,{method='GET',body,admin=true,expected}={}){const r=await fetch(base+path,{method,headers:admin?headers:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();assert.equal(r.status,expected??(method==='POST'?201:200),path+' '+JSON.stringify(data));return data;}
  const game=await req('/games',{method:'POST',body:{name:'Voice test',intervalSeconds:3600}}),root='/games/'+game.id;
  assert.equal((await req(root+'/commentary/admin/settings')).enabled,false);
+ const classicTv=await browser.newPage();
+ await classicTv.addInitScript(()=>{
+  const voice=window.voiceTest={spoken:[],cancelCount:0,active:null};
+  Object.defineProperty(window,'speechSynthesis',{value:{
+   getVoices:()=>[],
+   speak(utterance){voice.spoken.push(utterance.text);voice.active=utterance;},
+   cancel(){voice.cancelCount++;voice.active=null;}
+  }});
+ });
+ try{
+  await classicTv.goto(base+'/tv/'+game.joinCode);
+  await classicTv.getByRole('button',{name:'Narration off (host)',exact:true}).waitFor();
+  await classicTv.getByRole('button',{name:/Sound off/}).click();
+  await classicTv.getByRole('button',{name:'Sound on',exact:true}).waitFor();
+  await classicTv.locator('#latest').evaluate(el=>el.textContent='7');
+  await classicTv.waitForFunction(()=>window.voiceTest.spoken.length===1);
+  await classicTv.locator('#latest').evaluate(el=>el.textContent='8');
+  await classicTv.waitForResponse(r=>r.url().includes('/commentary?after=')&&r.ok());
+  assert.deepEqual(await classicTv.evaluate(()=>[window.voiceTest.spoken,window.voiceTest.cancelCount]),[['भाग्यशाली सात।'],0]);
+  await classicTv.evaluate(()=>window.voiceTest.active.onend());
+  assert.deepEqual(await classicTv.evaluate(()=>window.voiceTest.spoken),['भाग्यशाली सात।','अगला नंबर, आठ।']);
+  await classicTv.getByRole('button',{name:'Hindi voice on',exact:true}).click();
+  assert.equal(await classicTv.evaluate(()=>window.voiceTest.cancelCount),1);
+ }finally{await classicTv.close();}
+
  await req(root+'/commentary/admin/settings',{admin:false,expected:401});
  await req(root+'/commentary/admin/settings',{method:'POST',body:{enabled:true,familyFriendly:true,allowSexualReferences:true},expected:400});
  await req(root+'/commentary/admin/settings',{method:'POST',body:{voiceProvider:'elevenlabs'},expected:400});
