@@ -18,12 +18,57 @@ export function parseSettings(input:Record<string,unknown>):CommentarySettings {
 }
 interface Game extends QueryResultRow {id:string;status:string;emergency_stopped:boolean;next_number_sequence:number;}
 interface Event extends QueryResultRow {seq:string;game_id:string;event_key:string;kind:'NUMBER'|'WINNER'|'SHOUTOUT';language:'en'|'hi';text:string;status:string;lease_until:Date;audio:Buffer|null;}
-interface Fact {key:string;kind:Event['kind'];number?:number;name?:string;category?:string;hits?:number;sequence:number;}
+interface Fact {key:string;kind:Event['kind'];number?:number;name?:string;category?:string;hits?:number;ticketSize?:number;latestHit?:boolean;sequence:number;}
 const voiceEnv=(settings:CommentarySettings)=>'COMMENTARY_ELEVEN_VOICE_'+(settings.voiceStyle==='licensed'?'LICENSED':settings.language.toUpperCase()+'_'+(settings.accent==='us'?'US':'IN'));
+const numberCalls = {
+ en: [
+  (n:number)=>`Here comes ${n}! See if it’s on your ticket.`,
+  (n:number)=>`Eyes on the board. It’s ${n}!`,
+  (n:number)=>`We’ve drawn ${n}! Mark it if you have it.`,
+  (n:number)=>`The next number is ${n}. Anyone get a match?`,
+  (n:number)=>`And out comes ${n}!`,
+ ],
+ hi: [
+  (n:number)=>`लीजिए, ${n} आ गया! देखिए, आपके टिकट पर है क्या?`,
+  (n:number)=>`नज़रें बोर्ड पर। इस बार निकला ${n}!`,
+  (n:number)=>`आज की अगली पुकार, ${n}! हो तो निशान लगाइए।`,
+  (n:number)=>`किसके टिकट पर है ${n}? यही है हमारा अगला नंबर।`,
+  (n:number)=>`और इस बार निकला ${n}!`,
+ ],
+};
+
+function ticketMood(hits:number, size:number, latestHit:boolean) {
+ if(size-hits===1)return 'suspense';
+ if(hits===0)return 'anticipation';
+ if(latestHit)return 'excitement';
+ return 'hope';
+}
+
+const moodLines = {
+ en: {
+  suspense: 'One more for a full ticket. This could be a nail-biter!',
+  anticipation: 'Still waiting for that first match. Will the next call do it?',
+  excitement: 'The latest call was a match. That might earn a little cheer!',
+  hope: 'No match on that call. There’s still plenty to play for.',
+ },
+ hi: {
+  suspense: 'पूरा टिकट भरने के लिए बस एक नंबर। अब तो धड़कनें तेज़ हो सकती हैं!',
+  anticipation: 'पहले निशान का इंतज़ार है। क्या अगली पुकार में आएगा?',
+  excitement: 'अभी का नंबर टिकट पर है। इस पर तो एक छोटी सी खुशी बनती है!',
+  hope: 'इस बार नंबर नहीं मिला। उम्मीद अभी बाकी है।',
+ },
+};
+
 function fallback(f:Fact,c:CommentarySettings):string {
  if(f.kind==='WINNER')return c.language==='hi'?`${f.category} के विजेता ${f.name}! ज़ोरदार तालियाँ!`:`${f.name} wins ${f.category}! A round of applause!`;
- if(f.kind==='SHOUTOUT')return c.language==='hi'?`${f.name} के टिकट पर अब तक ${f.hits} नंबर आए हैं। खेल जारी है!`:`${f.name} has ${f.hits} numbers called so far. Keep playing!`;
- return c.language==='hi'?`नंबर ${f.number}! अपना टिकट देखिए।`:`Number ${f.number}! Check your ticket.`;
+ if(f.kind==='SHOUTOUT'){
+  const hits=f.hits!, size=f.ticketSize!;
+  const progress=c.language==='hi'?`${f.name} के टिकट पर ${size} में से ${hits} नंबर आ चुके हैं।`:`${f.name} has matched ${hits} of ${size} numbers.`;
+  return progress+' '+moodLines[c.language][ticketMood(hits,size,Boolean(f.latestHit))];
+ }
+ const variants=numberCalls[c.language];
+ // Index by the announcement count so intervals like 5 don't repeat the same phrase.
+ return variants[(Math.floor(f.sequence/c.callsEvery)-1)%variants.length](f.number!);
 }
 /** Grounded facts and stable event keys keep LLM latency away from number draws. */
 @Injectable()
@@ -65,12 +110,12 @@ export class CommentaryService {
   const seen=new Set(existing.map(r=>r.event_key));
   if(game.status==='COMPLETED')return null;
   if(latest.sequence%c.callsEvery===0&&!seen.has('number:'+latest.sequence))return {key:'number:'+latest.sequence,kind:'NUMBER',number:latest.number,sequence:latest.sequence};
-  if(c.shoutoutsEvery&&latest.sequence>=5&&latest.sequence%c.shoutoutsEvery===0&&!seen.has('shoutout:'+latest.sequence)){
+  if(c.shoutoutsEvery&&latest.sequence%c.shoutoutsEvery===0&&!seen.has('shoutout:'+latest.sequence)){
    const players=(await this.db.query<{name:string;numbers:number[]}&QueryResultRow>(`SELECT p.name,t.numbers FROM tickets t JOIN players p ON p.id=t.player_id WHERE t.game_id=$1 AND t.status='SUBMITTED' AND p.approved ORDER BY p.id LIMIT 200`,[id])).rows;
-   const called=new Set((await this.db.query<{number:number}&QueryResultRow>('SELECT number FROM called_numbers WHERE game_id=$1',[id])).rows.map(r=>r.number));
-   const ranking=players.map(p=>({name:p.name,hits:p.numbers.filter(n=>called.has(n)).length})).filter(p=>p.hits>0&&p.hits<15).sort((a,b)=>b.hits-a.hits||a.name.localeCompare(b.name));
+   const called=new Set((await this.db.query<{number:number}&QueryResultRow>('SELECT number FROM called_numbers WHERE game_id=$1 AND sequence<=$2',[id,latest.sequence])).rows.map(r=>r.number));
+   const ranking=players.map(p=>({name:p.name,hits:p.numbers.filter(n=>called.has(n)).length,ticketSize:p.numbers.length,latestHit:p.numbers.includes(latest.number)})).filter(p=>p.hits<p.ticketSize).sort((a,b)=>b.hits-a.hits||a.name.localeCompare(b.name));
    const focus=c.shoutoutMode==='mixed'?(latest.sequence/c.shoutoutsEvery)%2?'leaders':'few':c.shoutoutMode;const group=focus==='leaders'?ranking.slice(0,3):ranking.slice(-3);const selected=group.length?group[Math.floor(latest.sequence/c.shoutoutsEvery)%group.length]:null;
-   if(selected)return {key:'shoutout:'+latest.sequence,kind:'SHOUTOUT',name:selected.name,hits:selected.hits,sequence:latest.sequence};
+   if(selected)return {key:'shoutout:'+latest.sequence,kind:'SHOUTOUT',...selected,sequence:latest.sequence};
   }
   return null;
  }
@@ -79,7 +124,7 @@ export class CommentaryService {
    // A bounded per-game budget also limits third-party spend; winners reserve a little room.
    await client.query('SELECT id FROM games WHERE id=$1 FOR UPDATE',[id]);
    const count=(await client.query<{count:number}>('SELECT count(*)::int AS count FROM game_commentary_events WHERE game_id=$1',[id])).rows[0].count;
-   if(count>=140)return null;
+   if(count>=240)return null;
    const insert=await client.query<Event>(`INSERT INTO game_commentary_events(game_id,event_key,kind,language) VALUES($1,$2,$3,$4) ON CONFLICT(game_id,event_key) DO UPDATE SET status='PROCESSING',lease_until=NOW()+INTERVAL '30 seconds' WHERE game_commentary_events.status='PROCESSING' AND game_commentary_events.lease_until<NOW() RETURNING *`,[id,f.key,f.kind,c.language]);return insert.rows[0]??null;
   });
  }
@@ -92,7 +137,7 @@ export class CommentaryService {
  }
  private async flourish(f:Fact,c:CommentarySettings):Promise<string>{
   const signal=AbortSignal.timeout(4000);
-  const prompt=`Write one fresh Tambola host reaction with a ${c.tone} tone, at most 16 words, ${c.language==='hi'?'in natural Hindi Devanagari':'in natural English'}. Facts: ${JSON.stringify({event:f.kind,number:f.number,calledOnTicket:f.hits,callIndex:f.sequence})}. Do not invent players, winners, progress, prizes, or numbers; do not repeat facts. No names or digits in the response. No harassment, profanity, or stereotypes. ${c.familyFriendly?'Family friendly for children. No sexual references.':c.allowSexualReferences?'Adults are present; mild non-explicit innuendo is allowed. No explicit sexual content.':'No sexual references.'} Return only the reaction.`;
+  const prompt=`Write one fresh Tambola host reaction with a ${c.tone} tone, at most 16 words, ${c.language==='hi'?'in natural Hindi Devanagari':'in natural English'}. Facts: ${JSON.stringify({event:f.kind,number:f.number,calledOnTicket:f.hits,ticketSize:f.ticketSize,latestCallMatched:f.latestHit,callIndex:f.sequence})}. For a shout-out, respond to the ticket progress with gentle suspense or encouragement. Suggest how the moment might feel without claiming to know the player’s emotions. Do not invent players, winners, progress, prizes, or numbers; do not repeat facts. No names or digits in the response. No harassment, profanity, or stereotypes. ${c.familyFriendly?'Family friendly for children. No sexual references.':c.allowSexualReferences?'Adults are present; mild non-explicit innuendo is allowed. No explicit sexual content.':'No sexual references.'} Return only the reaction.`;
   const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent',{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY!,'content-type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.8,maxOutputTokens:60}}),signal});
   if(!response.ok)throw Error('Gemini '+response.status);
   const data=await response.json() as {candidates?:{content?:{parts?:{text?:string}[]}}[]};const value=data.candidates?.[0]?.content?.parts?.map(p=>p.text??'').join('').trim()??'';

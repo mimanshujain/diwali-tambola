@@ -3,9 +3,9 @@
 Recommended service combination: [Google Gemini 2.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite) for brief Hindi/English text, with [ElevenLabs Flash v2.5](https://elevenlabs.io/docs/overview/capabilities/text-to-speech) for optional consistent speech. The TV's built-in speech is the free baseline. See [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing/) and [ElevenLabs API pricing](https://elevenlabs.io/pricing/api) before enabling paid services.
 
 In **Live AI commentary**, enable narration per game. Choose English or Hindi,
-number frequency, shout-out focus and frequency, commentary tone, winner announcements, voice source,
+number frequency, shout-out focus and an interval of 1–30 calls (0 to turn off), commentary tone, winner announcements, voice source,
 US or Indian accent, and family mode. Player progress comes only from approved,
-submitted ticket numbers and called numbers. Confirmed winners come from saved
+submitted ticket numbers and called numbers. Shout-outs say how many numbers have matched and use the latest match or remaining numbers to suggest suspense or encouragement. Number call phrasing varies even without a provider key. Confirmed winners come from saved
 winner records. The room TV shows captions even when sound is off; press **Sound**
 on the TV to hear the voice. Its local **Narration** switch can silence it.
 
@@ -54,7 +54,7 @@ rejected. Never expose the keys in the browser or repository.
 Cloud speech sends the completed sentence, including any approved player name,
 to ElevenLabs. Text generation does not send player names to Gemini. The
 provider bills the server owner; set provider spending limits independently.
-A game has a hard cap of 140 narration events, and reloading or opening another
+A game has a hard cap of 240 narration events, and reloading or opening another
 TV reuses persisted events and audio. Provider calls occur after the draw is
 committed and never delay the draw. Failed calls fall back to local speech; game
 progress and commentary settings survive server restarts.
