@@ -14,6 +14,7 @@ jobs:
           node-version: 26
       - run: npm ci
       - run: npm test && npm run typecheck && npm run build
+      - run: node --test tests/commentary-providers.mjs
       - name: Install isolated rehearsal tools
         run: npm install --prefix /tmp/tambola-test-tools embedded-postgres@18.6.0-beta.19 playwright-core@1.64.1 @sparticuz/chromium@153.0.0
       - name: Hosted security, HTTPS browsers and overlapping server recovery

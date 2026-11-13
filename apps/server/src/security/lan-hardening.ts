@@ -17,7 +17,7 @@ export function lanHardening(req: IncomingMessage, res: ServerResponse, next: ()
 const attempts = new Map<string,{start:number,count:number}>();
 export function adminRateLimit(req: IncomingMessage,res: ServerResponse,next: () => void):void {
   const path = (req.url ?? '').split('?')[0];
-  const protectedPath = /^\/games\/[^/]+\/admin(?:\/|$)/.test(path) ||
+  const protectedPath = (/^\/games\/[^/]+\/commentary\/admin(?:\/|$)/.test(path) || /^\/games\/[^/]+\/admin(?:\/|$)/.test(path)) ||
     (path === '/games' && ['GET','POST'].includes(req.method ?? '')) ||
     (req.method === 'POST' && /^\/games\/[^/]+\/(?:start|pause|resume|calls\/manual|tickets)\/?$/.test(path));
   if (!protectedPath && req.headers['x-admin-key'] === undefined) {next();return;}

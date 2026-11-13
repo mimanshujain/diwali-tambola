@@ -1,3 +1,4 @@
+import { commentaryFields, commentaryEditorJs } from '../commentary/commentary-editor.js';
 import { appearanceFields, appearanceEditorJs } from './appearance-editor.js';
 import { cloudMode, hostContext } from '../hosting/context.js';
 import { html, adminSidebar } from './theme.js';
@@ -119,6 +120,7 @@ export function adminPage(_gameId:string):string {
  <details><summary>Manual call, ending & deleting</summary><div class="row"><input id="manual" aria-label="Manual number" placeholder="1–90" type="number" min="1" max="90" style="width:110px"><button id="manualBtn" class="ghost">Call this number</button><button id="end" class="red">End game…</button><button id="delete-game" class="red">Delete game…</button></div><p class="small">Emergency stop freezes all draws, including tie-breaks. End game closes play permanently and retains its records. Delete game permanently removes all records for this game.</p></details></section>
  <div class="admin-grid">
  <details id="appearance-panel" class="panel"><summary>Appearance</summary><form id="appearance-form" class="section-body">${appearanceFields}<button id="save-appearance">Save appearance</button><p id="appearance-result" class="small" role="status"></p></form></details>
+ ${commentaryFields}
  <details id="players-panel" class="panel" open><summary>Players & tickets <span id="players-count" class="count"></span></summary><div class="section-body"><div class="row"><input id="player-search" type="search" placeholder="Find a player" aria-label="Find a player" style="flex:1"><button id="print-all" class="ghost">Print all tickets</button></div><p id="conflicts" class="notice"></p><div id="players" class="list"></div></div></details>
  <details id="prizes-panel" class="panel" open><summary>Prize categories <span id="categories-count" class="count"></span></summary><div class="section-body"><div id="categories" class="list"></div><details><summary>Add a prize</summary><form id="category-form"><label>Name<input id="category-name" maxlength="80" required placeholder="Early Seven"></label><label>Winning rule<select id="category-rule">${rules}</select></label><label>Prize or description<input id="category-prize" maxlength="200" placeholder="Gift hamper"></label><label>Ties<select id="category-policy"><option value="SHARED_PRIZE">Share the prize</option><option value="SUDDEN_DEATH">Sudden-death round</option></select></label><button id="add-category">Add category</button></form></details><p class="small">Set up and edit prizes before starting. Any Two Lines requires two complete rows. All Odd / All Even requires every matching number on the ticket.</p></div></details>
  <details id="claims-panel" class="panel" open><summary>Claims & eligible tickets</summary><div class="section-body"><p class="small">Eligibility is announced automatically. Claims alert you, but the earliest qualifying ticket wins even without a claim.</p><div id="claims" class="list"></div><h3>Qualified tickets</h3><div id="eligible" class="list"></div></div></details>
@@ -132,6 +134,7 @@ const id=location.pathname.split('/').filter(Boolean).pop(),root='/games/'+encod
 let display=null,players=[],categories=[],refreshPromise=null,queued=false,intervalLoaded=false,serverClock=0,clockAt=0;
 let knownClaims=null,knownPowers=null,alertContext=null,alertEnabled=false,pendingClaim=null;
 const req=(path,method='GET',body)=>request(root+path,method,body);
+${commentaryEditorJs}
 if(!hosted)$('#tvQr').src='/admin/'+encodeURIComponent(id)+'/tv-qr.svg';else{
  $('#tvQr').hidden=true;
  $('#pair-tv').onclick=()=>run($('#pair-tv'),async()=>{const pair=await req('/admin/tv-pair','POST');$('#pair-code').textContent=pair.code.slice(0,5)+' '+pair.code.slice(5);$('#pair-link').href=pair.url;$('#pair-link').hidden=false;$('#tvQr').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(pair.qr);$('#tvQr').hidden=false;$('#pair-instructions').textContent='On the TV, open '+location.origin+'/screen and enter this code. Or scan the QR with the display device. Valid for 10 minutes, once only.';});
@@ -202,7 +205,7 @@ async function refreshOnce(){try{
  }catch(error){say(error.message);}}
 async function loadGames(){const games=await request('/games'),select=$('#switch-game');select.replaceChildren();for(const game of games){const option=el('option',game.name+' · '+game.joinCode+' · '+game.status);option.value=game.id;option.selected=game.id===id;select.append(option);}}
 $('#switch-game').onchange=()=>location.href='/admin/'+encodeURIComponent($('#switch-game').value);
-$('#load').onclick=()=>run($('#load'),async()=>{await loadGames();await refresh();});$('#player-search').oninput=renderPlayers;
+$('#load').onclick=()=>run($('#load'),async()=>{await loadGames();await loadCommentary();await refresh();});$('#player-search').oninput=renderPlayers;
 for(const action of ['start','pause','resume'])$('#'+action).onclick=()=>run($('#'+action),()=>act('/'+action));
 $('#stop').onclick=()=>run($('#stop'),()=>act('/admin/stop'));$('#release').onclick=()=>run($('#release'),()=>act('/admin/release-stop'));
 $('#appearance-form').onsubmit=e=>{e.preventDefault();run($('#save-appearance'),async()=>{$('#appearance-result').textContent='';const live=['RUNNING','PAUSED'].includes(display.game.status);if(live&&!confirm('Update the appearance on all connected screens during this game?'))return;await req('/admin/appearance','POST',{...appearancePayload(),confirmLive:live});appearanceDirty=false;await refresh();$('#appearance-result').textContent='Appearance saved on all screens.';});};

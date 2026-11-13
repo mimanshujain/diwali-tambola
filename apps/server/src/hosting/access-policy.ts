@@ -12,7 +12,7 @@ export function accessPolicy(method: string, path: string): Access {
     const suffix = match[2] ?? '';
     if (method === 'GET' && ['guest-display','players/me','players/me/power'].includes(suffix)) return {kind:'public'};
     if (method === 'POST' && ['players/register','players/recover','players/me/submit','players/me/regenerate','players/me/claims','players/me/power/request'].includes(suffix)) return {kind:'public'};
-    return {kind: method === 'GET' && ['display','calls','categories',''].includes(suffix) ? 'screen' : 'host',game:match[1]};
+    return {kind: method === 'GET' && (['display','calls','categories','commentary',''].includes(suffix) || /^commentary\/\d+\/audio$/.test(suffix)) ? 'screen' : 'host',game:match[1]};
   }
   const admin = new RegExp('^/admin/(' + uuid + ')(?:/tv-qr\\.svg)?$').exec(path);
   if (admin) return {kind:'host',game:admin[1]};

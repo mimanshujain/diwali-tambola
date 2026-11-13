@@ -29,6 +29,22 @@ services:
         sync: false
       - key: HOST_ALLOWED_EMAILS
         sync: false
+      # Optional commentary providers. Set in the Render Dashboard at Blueprint creation.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      # Voice IDs are account-specific. Set the combinations you intend to offer.
+      - key: COMMENTARY_ELEVEN_VOICE_EN_US
+        sync: false
+      - key: COMMENTARY_ELEVEN_VOICE_EN_IN
+        sync: false
+      - key: COMMENTARY_ELEVEN_VOICE_HI_IN
+        sync: false
+      - key: COMMENTARY_ELEVEN_VOICE_HI_US
+        sync: false
+      - key: COMMENTARY_ELEVEN_VOICE_LICENSED
+        sync: false
 
 databases:
   - name: diwali-tambola-db

@@ -60,6 +60,8 @@ try{
  await api('/games',{cookie:alice,method:'POST',headers:{origin:'https://evil.example'},body:{name:'CSRF'},expected:403});
  const foreign=[['GET',''],['GET','/display'],['GET','/calls'],['GET','/categories'],['GET','/admin/players'],['GET','/admin/claims'],['GET','/admin/eligible-winners'],['GET','/admin/audit'],['GET','/admin/ticket-conflicts'],['GET','/admin/power-requests'],['POST','/start'],['POST','/pause'],['POST','/resume'],['POST','/tickets'],['POST','/calls/manual'],...['stop','release-stop','end','timer','call-next','tv-pair','tv-revoke','categories'].map(s=>['POST','/admin/'+s])];
  for(const [method,suffix] of foreign)await api('/games/'+other.id+suffix,{cookie:alice,method,body:method==='POST'?{}:undefined,expected:404});
+ await api('/games/'+other.id+'/commentary/admin/settings',{cookie:alice,expected:404});await api('/games/'+other.id+'/commentary/admin/settings',{cookie:alice,method:'POST',body:{enabled:true},expected:404});
+ await api('/games/'+id+'/commentary/admin/settings',{cookie:alice,method:'POST',body:{enabled:true,language:'hi'},expected:201});
  await api('/games/'+other.id+'/admin/appearance',{cookie:alice,method:'POST',body:{name:'Foreign',themeId:'birthday'},expected:404});
  await api('/games/'+id+'/admin/appearance',{cookie:alice,method:'POST',body:{name:game.name,themeId:'elegant',welcomeMessage:'Welcome, guests'},expected:201});
  await api('/GAMES/'+other.id+'/ADMIN/STOP',{cookie:alice,method:'POST',body:{},expected:404});
@@ -81,7 +83,7 @@ try{
  assert.match(pair.url,/\/screen#[A-F0-9]{10}$/);assert.match(pair.qr,/<svg/);
  const paired=await api('/screen/connect',{method:'POST',body:{code:pair.code},expected:201}),screen=paired.r.headers.get('set-cookie').split(';')[0];assert.equal(paired.data.url,'/tv/'+game.joinCode);
  await api('/screen/connect',{method:'POST',body:{code:pair.code},expected:401});
- await api('/games/'+id+'/display',{cookie:screen});await api('/games/'+other.id+'/display',{cookie:screen,expected:401});await api('/games/'+id+'/admin/players',{cookie:screen,expected:401});await api('/games/'+id+'/start',{cookie:screen,method:'POST',expected:401});
+ await api('/games/'+id+'/display',{cookie:screen});await api('/games/'+id+'/commentary',{cookie:screen});await api('/games/'+other.id+'/commentary',{cookie:screen,expected:401});await api('/games/'+other.id+'/display',{cookie:screen,expected:401});await api('/games/'+id+'/admin/players',{cookie:screen,expected:401});await api('/games/'+id+'/start',{cookie:screen,method:'POST',expected:401});
  await api('/tv/'+game.joinCode,{cookie:screen});await api('/tv/'+id+'/qr.svg',{cookie:screen});
  await api('/games/'+id+'/admin/tv-revoke',{cookie:alice,method:'POST',expected:201});await api('/games/'+id+'/display',{cookie:screen,expected:401});
  const expired=(await api('/games/'+id+'/admin/tv-pair',{cookie:alice,method:'POST',expected:201})).data;await db.query('UPDATE display_access SET expires_at=NOW()-INTERVAL \'1 second\' WHERE token_hash=$1',[hash(expired.code)]);await api('/screen/connect',{method:'POST',body:{code:expired.code},expected:401});

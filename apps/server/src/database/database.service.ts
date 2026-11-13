@@ -1,3 +1,4 @@
+import { COMMENTARY_MIGRATION } from './migrations/012_commentary.js';
 import { GAME_APPEARANCE_MIGRATION } from './migrations/011_game_appearance.js';
 import { cloudMode } from '../hosting/context.js';
 import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
@@ -188,6 +189,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       if (!appearance.rowCount) {
         await client.query(GAME_APPEARANCE_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['011_game_appearance']);
+      }
+      const commentary = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['012_commentary']);
+      if (!commentary.rowCount) {
+        await client.query(COMMENTARY_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['012_commentary']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');
