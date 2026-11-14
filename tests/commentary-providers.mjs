@@ -17,6 +17,8 @@ test('commentary rejects adult references under family mode',()=>{
  assert.throws(()=>parseSettings({familyFriendly:true,allowSexualReferences:true}),/family friendly/i);
  assert.equal(parseSettings({language:'hi',accent:'indian'}).language,'hi');
  assert.throws(()=>parseSettings({callsEvery:0}),/Invalid commentary/);
+ assert.equal(parseSettings({familyFriendly:false,allowSexualReferences:true}).innuendoIntensity,1);
+ for(const invalid of [0,4,1.5,'3',null])assert.throws(()=>parseSettings({innuendoIntensity:invalid}),/intensity from 1 to 3/);
 });
 test('Gemini writes a grounded Hindi reaction without sending player names',async t=>{
  const reaction='लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!';
@@ -36,20 +38,45 @@ test('Gemini writes a grounded Hindi reaction without sending player names',asyn
 });
 test('Gemini audience settings share the fallback and keep provider safety filters on',async t=>{
  let body;
- const responses=[answer('This is a kiss of luck!'),answer('This is a kiss of luck!'),answer('Explicit porn details'),answer('One to go! १')];
+ const responses=[answer('This is a kiss of luck!'),answer('This is a kiss of luck!'),answer('This is a kiss of luck!'),answer('Explicit porn details'),answer('One to go! १')];
  mockProvider(t,{GEMINI_API_KEY:'test-only-key',GEMINI_MODEL:'gemini-3.5-flash-lite'},async(url,options)=>{
   assert.match(url,/gemini-3\.5-flash-lite:generateContent$/);
   body=JSON.parse(options.body);return responses.shift();
  });
  const service=new CommentaryService({}),adult=parseSettings({familyFriendly:false,allowSexualReferences:true});
- const family=await service.compose(fact,parseSettings({}));
+ const family=await service.compose(fact,parseSettings({innuendoIntensity:3}));
  assert.equal(family.gemini.status,'filtered');assert.equal(family.reaction,null);assert.equal(family.script,family.text);
  assert.equal(body.safetySettings[0].threshold,'BLOCK_LOW_AND_ABOVE');
- assert.equal((await service.compose(fact,adult)).reaction,'This is a kiss of luck!');
- assert.match(body.contents[0].parts[0].text,/mild, non-explicit double meaning.*never sexualize or tease a person/);
+ assert.doesNotMatch(body.contents[0].parts[0].text,/adults-only audience/);
+ const regular=await service.compose(fact,parseSettings({familyFriendly:false,innuendoIntensity:3}));
+ assert.equal(regular.gemini.status,'filtered');assert.match(body.contents[0].parts[0].text,/No sexual references/);
+ const bold={...adult,innuendoIntensity:3};
+ assert.equal((await service.compose(fact,bold)).reaction,'This is a kiss of luck!');
+ assert.match(body.contents[0].parts[0].text,/bold, unmistakably suggestive.*never sexualize or tease a person.*non-explicit/);
  assert.equal(body.safetySettings[0].threshold,'BLOCK_MEDIUM_AND_ABOVE');
- assert.equal((await service.compose(fact,adult)).gemini.status,'filtered');
- assert.equal((await service.compose(fact,adult)).gemini.status,'filtered');
+ assert.equal((await service.compose(fact,bold)).gemini.status,'filtered');
+ assert.equal((await service.compose(fact,bold)).gemini.status,'filtered');
+});
+test('Gemini receives distinct directions for each adults-only intensity',async t=>{
+ const prompts=[],filters=[];
+ mockProvider(t,{GEMINI_API_KEY:'test-only-key',GEMINI_MODEL:undefined},async(url,options)=>{
+  const body=JSON.parse(options.body);
+  prompts.push(body.contents[0].parts[0].text);filters.push(body.safetySettings);
+  return answer('The ticket is playing hard to get!');
+ });
+ const service=new CommentaryService({});
+ for(const innuendoIntensity of [1,2,3]){
+  const settings=parseSettings({familyFriendly:false,allowSexualReferences:true,innuendoIntensity});
+  assert.equal((await service.compose(fact,settings)).gemini.status,'generated');
+ }
+ assert.match(prompts[0],/subtle wink/);
+ assert.match(prompts[1],/cheeky double entendre/);
+ assert.match(prompts[2],/bold, unmistakably suggestive double entendre/);
+ for(const [i,prompt] of prompts.entries()){
+  assert.match(prompt,/never sexualize or tease a person.*non-explicit/);
+  assert.doesNotMatch(prompt,/Private Player/);
+  assert.deepEqual(filters[i],filters[0]);
+ }
 });
 test('Gemini errors are actionable without exposing provider response text',async t=>{
  const cases=[

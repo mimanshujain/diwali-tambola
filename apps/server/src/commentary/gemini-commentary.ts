@@ -1,10 +1,15 @@
-import type { CommentarySettings } from './commentary.service.js';
+import type { CommentarySettings, InnuendoIntensity } from './commentary.service.js';
 
 const defaultModel = 'gemini-3.5-flash-lite';
 const blockedReasons = new Set(['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'IMAGE_SAFETY']);
 const safetyCategories = ['HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_DANGEROUS_CONTENT'];
 const explicit = /\b(?:fuck\w*|shit\w*|porn\w*|nude|naked|rape\w*)\b|अश्लील|नग्न|शारीरिक संबंध|बलात्कार/i;
 const sexual = /\b(?:sex\w*|kiss\w*|bedroom|hook[ -]?up|foreplay|turn[ -]on)\b|सेक्स|चुंबन|चुम्बन|चूम/i;
+const innuendoInstructions: Record<InnuendoIntensity, string> = {
+  1: 'Use a subtle wink or mild double meaning only when it fits the moment.',
+  2: 'Aim for a cheeky double entendre. Give the game action an easily recognized suggestive second meaning.',
+  3: 'Make a bold, unmistakably suggestive double entendre the punchline of this reaction. Use risqué wordplay or flirtatious tension about the game instead of a generic cheer.',
+};
 
 type Status = 'generated' | 'no_key' | 'invalid_model' | 'invalid_key' | 'access_denied' | 'model_unavailable' |
   'quota' | 'billing' | 'payment_required' | 'rejected' | 'unavailable' | 'timeout' | 'blocked' | 'truncated' | 'empty' | 'filtered';
@@ -53,7 +58,7 @@ async function rejection(response: Response): Promise<Status> {
 
 export async function generateReaction(
   facts: ReactionFacts,
-  settings: Pick<CommentarySettings, 'language' | 'tone' | 'familyFriendly' | 'allowSexualReferences'>,
+  settings: Pick<CommentarySettings, 'language' | 'tone' | 'familyFriendly' | 'allowSexualReferences' | 'innuendoIntensity'>,
 ): Promise<{report: GeminiReport; reaction: string | null}> {
   const key = geminiKey(), model = geminiModel();
   const failure = (status: Status, httpStatus?: number) => ({report: {status, model, httpStatus}, reaction: null});
@@ -62,7 +67,7 @@ export async function generateReaction(
 
   const adult = !settings.familyFriendly && settings.allowSexualReferences;
   const audience = adult
-    ? 'For an adults-only audience, use a mild, non-explicit double meaning about the game when it fits. Keep it about the game and never sexualize or tease a person. No explicit sexual content.'
+    ? `For an adults-only audience: ${innuendoInstructions[settings.innuendoIntensity]} Keep the innuendo about the game and never sexualize or tease a person. Keep it non-explicit, with no descriptions of sexual acts or anatomy.`
     : settings.familyFriendly ? 'Keep the line suitable for children. No sexual references.' : 'No sexual references.';
   const prompt = `Write one original reaction for a Tambola host, at most 16 words, with a ${settings.tone} tone, ${settings.language === 'hi' ? 'in natural Hindi using Devanagari' : 'in natural English'}. A short factual announcement comes just before your line. React to this specific moment with a playful image, suspense, or encouragement. Avoid stock phrases like “check your ticket” or “great energy.” For ticket progress, suggest how the moment might feel without claiming to know the player's emotions. Keep the situation accurate. Do not repeat or invent facts, names, numbers, prizes, or wins. No digits, profanity, harassment, or stereotypes. ${audience} Return only the reaction on one line.\nGame facts: ${JSON.stringify(facts)}`;
   const safetySettings = safetyCategories.map(category => ({

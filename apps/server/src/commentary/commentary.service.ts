@@ -4,18 +4,20 @@ import { hostId } from '../hosting/context.js';
 import { geminiKey, generateReaction, type GeminiReport } from './gemini-commentary.js';
 import type { QueryResultRow } from 'pg';
 
+export type InnuendoIntensity = 1 | 2 | 3;
 export interface CommentarySettings {
  enabled:boolean;language:'en'|'hi';tone:'warm'|'energetic'|'playful';callsEvery:number;shoutoutsEvery:number;shoutoutMode:'mixed'|'leaders'|'few';announceWinners:boolean;
- familyFriendly:boolean;allowSexualReferences:boolean;accent:'indian'|'us';voiceProvider:'browser'|'elevenlabs';voiceStyle:'standard'|'licensed';
+ familyFriendly:boolean;allowSexualReferences:boolean;innuendoIntensity:InnuendoIntensity;accent:'indian'|'us';voiceProvider:'browser'|'elevenlabs';voiceStyle:'standard'|'licensed';
 }
-const defaults:CommentarySettings={enabled:false,language:'en',tone:'warm',callsEvery:1,shoutoutsEvery:5,shoutoutMode:'mixed',announceWinners:true,familyFriendly:true,allowSexualReferences:false,accent:'indian',voiceProvider:'browser',voiceStyle:'standard'};
+const defaults:CommentarySettings={enabled:false,language:'en',tone:'warm',callsEvery:1,shoutoutsEvery:5,shoutoutMode:'mixed',announceWinners:true,familyFriendly:true,allowSexualReferences:false,innuendoIntensity:1,accent:'indian',voiceProvider:'browser',voiceStyle:'standard'};
 const uuid=(id:string)=>{if(!/^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(id))throw new BadRequestException('Invalid game ID');return id;};
 function boundedInt(v:unknown,min:number,max:number):v is number{return typeof v==='number'&&Number.isInteger(v)&&v>=min&&v<=max;}
 export function parseSettings(input:Record<string,unknown>):CommentarySettings {
  const c={...defaults,...input};
  for(const k of ['enabled','announceWinners','familyFriendly','allowSexualReferences'] as const)if(typeof c[k]!=='boolean')throw new BadRequestException(`Invalid ${k}`);
  if(!['hi','en'].includes(c.language)||!['warm','energetic','playful'].includes(c.tone)||!['mixed','leaders','few'].includes(c.shoutoutMode)||!['indian','us'].includes(c.accent)||!['browser','elevenlabs'].includes(c.voiceProvider)||!['standard','licensed'].includes(c.voiceStyle)||!boundedInt(c.callsEvery,1,10)||!boundedInt(c.shoutoutsEvery,0,30))throw new BadRequestException('Invalid commentary settings');
- if(c.familyFriendly&&c.allowSexualReferences)throw new BadRequestException('Turn off family friendly mode before enabling mild adult references');
+ if(!boundedInt(c.innuendoIntensity,1,3))throw new BadRequestException('Choose an innuendo intensity from 1 to 3');
+ if(c.familyFriendly&&c.allowSexualReferences)throw new BadRequestException('Turn off family friendly mode before enabling adults-only commentary');
  return c as CommentarySettings;
 }
 interface Game extends QueryResultRow {id:string;status:string;emergency_stopped:boolean;next_number_sequence:number;}
@@ -113,7 +115,7 @@ export class CommentaryService {
  constructor(private readonly db:DatabaseService){}
  private async game(id:string):Promise<Game> {const g=(await this.db.query<Game>('SELECT id,status,emergency_stopped,next_number_sequence FROM games WHERE id=$1',[uuid(id)])).rows[0];if(!g)throw new NotFoundException('Game not found');return g;}
  async settings(id:string):Promise<CommentarySettings & {aiAvailable:boolean;voiceAvailable:boolean;licensedVoiceAvailable:boolean}> {
-  await this.game(id);const row=(await this.db.query<Record<string,unknown>&QueryResultRow>(`SELECT enabled,language,tone,shoutout_mode AS "shoutoutMode",calls_every AS "callsEvery",shoutouts_every AS "shoutoutsEvery",announce_winners AS "announceWinners",family_friendly AS "familyFriendly",allow_sexual_references AS "allowSexualReferences",accent,voice_provider AS "voiceProvider",voice_style AS "voiceStyle" FROM game_commentary_settings WHERE game_id=$1`,[id])).rows[0];
+  await this.game(id);const row=(await this.db.query<Record<string,unknown>&QueryResultRow>(`SELECT enabled,language,tone,shoutout_mode AS "shoutoutMode",calls_every AS "callsEvery",shoutouts_every AS "shoutoutsEvery",announce_winners AS "announceWinners",family_friendly AS "familyFriendly",allow_sexual_references AS "allowSexualReferences",innuendo_intensity AS "innuendoIntensity",accent,voice_provider AS "voiceProvider",voice_style AS "voiceStyle" FROM game_commentary_settings WHERE game_id=$1`,[id])).rows[0];
   const c=parseSettings(row??{});return {...c,aiAvailable:Boolean(geminiKey()),voiceAvailable:Boolean(process.env.ELEVENLABS_API_KEY?.trim()&&process.env[voiceEnv(c)]?.trim()),licensedVoiceAvailable:Boolean(process.env.COMMENTARY_ELEVEN_VOICE_LICENSED)};
  }
  async adminSettings(id:string){
@@ -125,10 +127,10 @@ export class CommentaryService {
  async update(id:string,body:Record<string,unknown>){
   const c=draftSettings(await this.settings(id),body);
   if(c.voiceProvider==='elevenlabs'&&(!process.env.ELEVENLABS_API_KEY?.trim()||!process.env[voiceEnv(c)]?.trim()))throw new BadRequestException('The selected cloud voice has not been configured by the service owner');
-  await this.db.query(`INSERT INTO game_commentary_settings(game_id,enabled,language,tone,calls_every,shoutouts_every,shoutout_mode,announce_winners,family_friendly,allow_sexual_references,accent,voice_provider,voice_style)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-   ON CONFLICT(game_id) DO UPDATE SET enabled=$2,language=$3,tone=$4,calls_every=$5,shoutouts_every=$6,shoutout_mode=$7,announce_winners=$8,family_friendly=$9,allow_sexual_references=$10,accent=$11,voice_provider=$12,voice_style=$13,updated_at=NOW()`,
-   [id,c.enabled,c.language,c.tone,c.callsEvery,c.shoutoutsEvery,c.shoutoutMode,c.announceWinners,c.familyFriendly,c.allowSexualReferences,c.accent,c.voiceProvider,c.voiceStyle]);
+  await this.db.query(`INSERT INTO game_commentary_settings(game_id,enabled,language,tone,calls_every,shoutouts_every,shoutout_mode,announce_winners,family_friendly,allow_sexual_references,accent,voice_provider,voice_style,innuendo_intensity)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+   ON CONFLICT(game_id) DO UPDATE SET enabled=$2,language=$3,tone=$4,calls_every=$5,shoutouts_every=$6,shoutout_mode=$7,announce_winners=$8,family_friendly=$9,allow_sexual_references=$10,accent=$11,voice_provider=$12,voice_style=$13,innuendo_intensity=$14,updated_at=NOW()`,
+   [id,c.enabled,c.language,c.tone,c.callsEvery,c.shoutoutsEvery,c.shoutoutMode,c.announceWinners,c.familyFriendly,c.allowSexualReferences,c.accent,c.voiceProvider,c.voiceStyle,c.innuendoIntensity]);
   return this.adminSettings(id);
  }
 

@@ -14,7 +14,7 @@ on the TV to hear the voice. Its local **Narration** switch can silence it.
 1. Open a game and expand **Live AI commentary**. Choose language, tone, audience, accent, and voice. You can preview with **Enable commentary** switched off.
 2. Under **Test commentary**, choose a sample event and click **Generate preview**. A successful request shows the model and a separate **Gemini reaction**. **Scripted fallback** explains why a reaction was unavailable, such as a missing or rejected key, an unavailable model, quota, a timeout, or a filtered response.
 3. Play the sample on your current device. Browser playback uses that device's voices, which can differ from the TV's. Cloud speech uses the selected ElevenLabs voice and falls back to browser speech if it fails.
-4. To test mild innuendo, enable **Allow mild sexual references (adults only)** and accept the confirmation. Pick a sample event, then generate again. Gemini can still filter a response. Re-enable **Family friendly** to return to the default.
+4. For an adults-only game, enable **Allow sexual innuendo (adults only)** and accept the confirmation. Set **Innuendo intensity** to **Light** for subtle wordplay, **Cheeky** for an obvious double meaning, or **Bold** for a clearly suggestive punchline. Pick the same sample event at different levels to compare the reactions. Re-enable **Family friendly** to turn the meter off.
 
 Previews use fictional player and game data with your unsaved settings. They stay in the host console. The server allows up to ten previews per minute per host on each instance. Use **Save commentary** when you’re ready to apply the settings.
 
@@ -68,10 +68,8 @@ TV reuses persisted events and audio. Provider calls occur after the draw is
 committed and never delay the draw. Failed calls fall back to local speech; game
 progress and commentary settings survive server restarts.
 
-Family friendly is on by default, with no sexual references. An adults-only
-switch allows mild, non-explicit innuendo about the game after confirmation.
-Both settings use Gemini safety filters and the app's text checks. Names are
-approved by the host, but generated text and accent quality still deserve a
-short rehearsal with your chosen voice before guests arrive. A featured
-celebrity voice requires a properly licensed voice ID; the app does not clone
-or imitate a person from recordings.
+Family friendly is on by default, with no sexual references. Existing games start
+at **Light** when adults-only commentary is enabled. All three levels use
+non-explicit wordplay about the game and keep the same Gemini safety filters
+and app text checks. If Gemini filters a reaction, the app plays the scripted
+announcement. Use a properly licensed voice ID for a featured celebrity voice.

@@ -1,5 +1,11 @@
 import { browserVoiceJs } from './browser-voice.js';
 
+const innuendoLevels = [
+ {label:'Light',description:'A subtle double meaning when it fits.'},
+ {label:'Cheeky',description:'A suggestive second meaning that’s easy to catch.'},
+ {label:'Bold',description:'A clearly suggestive punchline about the game.'},
+];
+
 export const commentaryFields=String.raw`
 <details id="commentary-panel" class="panel"><summary>Live AI commentary</summary><div class="section-body">
 <form id="commentary-form" class="stack">
@@ -11,7 +17,13 @@ export const commentaryFields=String.raw`
  <div class="grid"><label>Voice source<select id="commentary-provider"><option value="browser">TV browser voice (free)</option><option value="elevenlabs">Cloud voice (ElevenLabs)</option></select></label><label>Accent<select id="commentary-accent"><option value="indian">Indian</option><option value="us">US</option></select></label></div>
  <label>Voice style<select id="commentary-style"><option value="standard">Standard voice</option><option value="licensed">Licensed featured voice</option></select></label><p class="small">Accent depends on a matching voice installed on the TV or configured by the service owner. A featured voice must be licensed and configured by the owner.</p>
  <label class="row"><input id="commentary-family" type="checkbox" style="width:auto"> Family friendly (default; no sexual references)</label>
- <label class="row"><input id="commentary-adult" type="checkbox" style="width:auto"> Allow mild sexual references (adults only)</label><p class="small">Allows Gemini to use mild innuendo about the game. Family friendly mode turns it off.</p>
+ <label class="row"><input id="commentary-adult" type="checkbox" style="width:auto" aria-controls="commentary-innuendo-controls"> Allow sexual innuendo (adults only)</label>
+ <div id="commentary-innuendo-controls" class="toolbar" hidden>
+  <div class="row between"><label for="commentary-innuendo">Innuendo intensity</label><strong id="commentary-innuendo-value">1 of 3 · Light</strong></div>
+  <input id="commentary-innuendo" type="range" min="1" max="${innuendoLevels.length}" step="1" value="1" disabled aria-valuetext="1 of ${innuendoLevels.length}, Light" aria-describedby="commentary-innuendo-description" style="accent-color:var(--occasion-accent)">
+  <div class="row between small" aria-hidden="true">${innuendoLevels.map(level=>'<span>'+level.label+'</span>').join('')}</div>
+  <p id="commentary-innuendo-description" class="small" style="margin:8px 0 0">${innuendoLevels[0].description}</p>
+ </div>
  <div class="row"><button id="commentary-save" disabled>Save commentary</button><span id="commentary-status" role="status" class="small"></span></div>
 </form>
 <section class="toolbar" aria-labelledby="commentary-test-title">
@@ -34,9 +46,11 @@ export const commentaryFields=String.raw`
 </div></details>`;
 export const commentaryEditorJs=String.raw`
 ${browserVoiceJs}
+const innuendoLevels=${JSON.stringify(innuendoLevels)};
 let commentaryDirty=false,commentaryLoaded=false;
 let previewVersion=0,previewSpeech=null;
 const commentaryInputs=['enabled','language','calls','shoutouts','focus','tone','winners','provider','accent','style','family','adult'].map(k=>$('#commentary-'+k));
+const innuendoMeter=$('#commentary-innuendo');
 const previewButton=$('#commentary-generate'),previewStatus=$('#commentary-preview-status');
 const previewAudio=$('#commentary-preview-audio'),previewSpeak=$('#commentary-preview-speak'),previewVoice=$('#commentary-preview-voice');
 const geminiReasons={
@@ -56,12 +70,22 @@ function geminiSummary(report){
  const reason=report.httpStatus===402?'payment_required':report.status;
  return 'Scripted fallback'+model+(report.httpStatus?' · Google HTTP '+report.httpStatus:'')+'. '+(geminiReasons[reason]||'Try a new preview.');
 }
+function updateInnuendoControl(){
+ const active=$('#commentary-adult').checked&&!$('#commentary-family').checked;
+ const value=Number(innuendoMeter.value),level=innuendoLevels[value-1];
+ $('#commentary-innuendo-controls').hidden=!active;
+ innuendoMeter.disabled=!active;
+ innuendoMeter.setAttribute('aria-valuetext',value+' of 3, '+level.label);
+ $('#commentary-innuendo-value').textContent=value+' of 3 · '+level.label;
+ $('#commentary-innuendo-description').textContent=level.description;
+}
 function fillCommentary(c){
  const event=c.lastAnnouncement,kinds={NUMBER:'Number call',SHOUTOUT:'Player shout-out',WINNER:'Winner'};
  $('#commentary-last').textContent=event?'Last live announcement · '+kinds[event.kind]+' · '+new Date(event.at).toLocaleString()+' · '+geminiSummary(event.gemini):'No live announcements yet.';
  if(!commentaryLoaded){previewButton.disabled=false;$('#commentary-save').disabled=false;}
  if(commentaryDirty&&commentaryLoaded)return;
  commentaryLoaded=true;$('#commentary-enabled').checked=c.enabled;$('#commentary-focus').value=c.shoutoutMode;$('#commentary-tone').value=c.tone;$('#commentary-language').value=c.language;$('#commentary-calls').value=String(c.callsEvery);$('#commentary-shoutouts').value=String(c.shoutoutsEvery);$('#commentary-winners').checked=c.announceWinners;$('#commentary-provider').value=c.voiceProvider;$('#commentary-accent').value=c.accent;$('#commentary-style').value=c.voiceStyle;$('#commentary-family').checked=c.familyFriendly;$('#commentary-adult').checked=c.allowSexualReferences;
+ innuendoMeter.value=String(c.innuendoIntensity??1);updateInnuendoControl();
  $('#commentary-status').textContent=c.aiAvailable?'Gemini key configured. Generate a preview to verify it.':'Gemini key missing. Scripted commentary is available.';
 }
 async function loadCommentary(){
@@ -69,7 +93,7 @@ async function loadCommentary(){
  try{fillCommentary(await req('/commentary/admin/settings'));}catch(error){$('#commentary-status').textContent=error.message;}
 }
 function commentaryDraft(){
- return {enabled:$('#commentary-enabled').checked,shoutoutMode:$('#commentary-focus').value,tone:$('#commentary-tone').value,language:$('#commentary-language').value,callsEvery:Number($('#commentary-calls').value),shoutoutsEvery:Number($('#commentary-shoutouts').value),announceWinners:$('#commentary-winners').checked,voiceProvider:$('#commentary-provider').value,accent:$('#commentary-accent').value,voiceStyle:$('#commentary-style').value,familyFriendly:$('#commentary-family').checked,allowSexualReferences:$('#commentary-adult').checked};
+ return {enabled:$('#commentary-enabled').checked,shoutoutMode:$('#commentary-focus').value,tone:$('#commentary-tone').value,language:$('#commentary-language').value,callsEvery:Number($('#commentary-calls').value),shoutoutsEvery:Number($('#commentary-shoutouts').value),announceWinners:$('#commentary-winners').checked,voiceProvider:$('#commentary-provider').value,accent:$('#commentary-accent').value,voiceStyle:$('#commentary-style').value,familyFriendly:$('#commentary-family').checked,allowSexualReferences:$('#commentary-adult').checked,innuendoIntensity:Number(innuendoMeter.value)};
 }
 function stopPreviewSpeech(){
  if(previewSpeech){previewSpeech=null;window.speechSynthesis.cancel();}
@@ -85,17 +109,19 @@ for(const field of commentaryInputs)field.addEventListener('change',()=>{
  commentaryDirty=true;
  if(field.id==='commentary-family'&&field.checked)$('#commentary-adult').checked=false;
  if(field.id==='commentary-adult'&&field.checked){
-  if(!confirm('This is for an adults-only gathering. Allow mild, non-explicit innuendo?'))field.checked=false;
+  if(!confirm('This is for an adults-only gathering. Allow suggestive commentary about the game?'))field.checked=false;
   else $('#commentary-family').checked=false;
  }
+ updateInnuendoControl();
  clearPreview();
 });
+innuendoMeter.oninput=()=>{commentaryDirty=true;updateInnuendoControl();clearPreview();};
 $('#commentary-scenario').onchange=()=>{$('#commentary-test-number-label').hidden=$('#commentary-scenario').value!=='number';clearPreview();};
 $('#commentary-test-number').oninput=clearPreview;
 
 function showPreview(result,settings){
  previewStatus.textContent=geminiSummary(result.gemini);
- $('#commentary-preview-audience').textContent=settings.familyFriendly?'Family friendly':settings.allowSexualReferences?'Adults only · mild innuendo allowed':'No sexual references';
+ $('#commentary-preview-audience').textContent=settings.familyFriendly?'Family friendly':settings.allowSexualReferences?'Adults only · '+innuendoLevels[settings.innuendoIntensity-1].label+' innuendo':'No sexual references';
  $('#commentary-preview-script').textContent=result.script;
  $('#commentary-preview-generated').hidden=!result.reaction;
  $('#commentary-preview-reaction').textContent=result.reaction||'';
@@ -137,9 +163,11 @@ previewButton.onclick=()=>run(previewButton,async()=>{
 $('#commentary-refresh').onclick=()=>run($('#commentary-refresh'),loadCommentary);
 $('#commentary-panel').addEventListener('toggle',()=>{if($('#commentary-panel').open)void loadCommentary();else clearPreview();});
 $('#commentary-form').onsubmit=e=>{e.preventDefault();run($('#commentary-save'),async()=>{
- const result=await req('/commentary/admin/settings','POST',commentaryDraft());
- commentaryDirty=false;fillCommentary(result);
- $('#commentary-status').textContent='Commentary saved. '+$('#commentary-status').textContent;
+ const draft=commentaryDraft();
+ const result=await req('/commentary/admin/settings','POST',draft);
+ commentaryDirty=JSON.stringify(commentaryDraft())!==JSON.stringify(draft);fillCommentary(result);
+ if(!commentaryDirty)$('#commentary-status').textContent='Commentary saved. '+$('#commentary-status').textContent;
+ else $('#commentary-status').textContent='Commentary saved. Newer edits are unsaved.';
 });};
 loadCommentary();
 `;

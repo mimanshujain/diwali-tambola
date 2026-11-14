@@ -11,6 +11,8 @@ import {MILESTONE_7_MIGRATION} from '../apps/server/dist/database/migrations/006
 import {SHORT_GAME_CODE_MIGRATION} from '../apps/server/dist/database/migrations/007_short_game_codes.js';
 import {PARTY_OPERATIONS_MIGRATION} from '../apps/server/dist/database/migrations/008_party_operations.js';
 import {PARTY_READINESS_MIGRATION} from '../apps/server/dist/database/migrations/009_party_readiness.js';
+import {COMMENTARY_MIGRATION} from '../apps/server/dist/database/migrations/012_commentary.js';
+import {COMMENTARY_INNUENDO_MIGRATION} from '../apps/server/dist/database/migrations/015_commentary_innuendo.js';
 export async function migrationChecks(client){
  await client.query('BEGIN');
  try{
@@ -34,5 +36,10 @@ export async function migrationChecks(client){
   const recovered=(await client.query('SELECT status,submitted_at,eligible_from_sequence FROM tickets WHERE id=$1',[activeTicket])).rows[0];
   assert.equal(recovered.status,'SUBMITTED');assert.ok(recovered.submitted_at);assert.equal(recovered.eligible_from_sequence,10);
   assert.equal((await client.query('SELECT regeneration_count FROM players WHERE id=$1',[playerId])).rows[0].regeneration_count,3);
+  await client.query(COMMENTARY_MIGRATION);
+  await client.query('INSERT INTO game_commentary_settings(game_id, family_friendly, allow_sexual_references) VALUES($1, false, true)',[id]);
+  await client.query(COMMENTARY_INNUENDO_MIGRATION);
+  const commentary=(await client.query('SELECT allow_sexual_references, innuendo_intensity FROM game_commentary_settings WHERE game_id=$1',[id])).rows[0];
+  assert.deepEqual(commentary,{allow_sexual_references:true,innuendo_intensity:1});
  }finally{await client.query('ROLLBACK');}
 }

@@ -19,7 +19,8 @@ globalThis.fetch=async (url,options)=>{
  const prompt=JSON.parse(options.body).contents[0].parts[0].text;
  if(prompt.includes('"number":89'))return new Response(null,{status:402});
  if(prompt.includes('"number":90'))return new Response(null,{status:429});
- const text=prompt.includes('using Devanagari')?'लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!':
+ const text=prompt.includes('bold, unmistakably suggestive')?'The board is hot and the balls are playing hard to get!':
+  prompt.includes('using Devanagari')?'लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!':
   prompt.includes('adults-only audience')?'That lucky ball is playing hard to get!':'Luck just pulled up a chair!';
  return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text}]}}]});
 };

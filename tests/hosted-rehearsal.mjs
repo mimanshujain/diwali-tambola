@@ -70,6 +70,8 @@ try{
  assert.equal(limit.reaction,null);assert.deepEqual(limit.gemini,{status:'quota',model:'gemini-3.5-flash-lite',httpStatus:429});
  const adult=(await api(previewPath,{cookie:alice,method:'POST',body:{...sample,settings:{...sample.settings,familyFriendly:false,allowSexualReferences:true}},expected:201})).data;
  assert.equal(adult.reaction,'That lucky ball is playing hard to get!');
+ const bold=(await api(previewPath,{cookie:alice,method:'POST',body:{...sample,settings:{...sample.settings,familyFriendly:false,allowSexualReferences:true,innuendoIntensity:3}},expected:201})).data;
+ assert.equal(bold.reaction,'The board is hot and the balls are playing hard to get!');
  assert.equal((await api(commentary+'/admin/settings',{cookie:alice})).data.familyFriendly,true);
  await api('/games/'+other.id+'/admin/appearance',{cookie:alice,method:'POST',body:{name:'Foreign',themeId:'birthday'},expected:404});
  await api('/games/'+id+'/admin/appearance',{cookie:alice,method:'POST',body:{name:game.name,themeId:'elegant',welcomeMessage:'Welcome, guests'},expected:201});
@@ -158,6 +160,14 @@ try{
  }
  assert.match(line?.text,/42.*लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!/);
  assert.deepEqual((await api(commentary+'/admin/settings',{cookie:renewed})).data.lastAnnouncement.gemini,{status:'generated',model:'gemini-3.5-flash-lite'});
+ await api(commentary+'/admin/settings',{cookie:renewed,method:'POST',body:{language:'en',familyFriendly:false,allowSexualReferences:true,innuendoIntensity:3},expected:201});
+ await api('/games/'+id+'/calls/manual',{cookie:renewed,method:'POST',body:{number:43},expected:201});
+ for(let i=0;i<25;i++){
+  line=(await api(commentary,{cookie:renewed})).data.events.find(event=>event.kind==='NUMBER');
+  if(line)break;
+  await new Promise(r=>setTimeout(r,80));
+ }
+ assert.match(line?.text,/43.*The board is hot and the balls are playing hard to get!/);
  const b=await start(port2);assert.equal((await api('/games/'+id,{cookie:renewed})).data.status,'RUNNING');
  await stop(b);assert.equal((await api('/games/'+id,{cookie:renewed})).data.status,'RUNNING'); // Standby shutdown cannot pause leader.
  const standby=await start(port2);await stop(a,'SIGKILL');currentPort=port2;
