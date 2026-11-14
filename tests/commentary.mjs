@@ -38,6 +38,10 @@ export async function commentaryChecks({base,key,db,browser,stop,start,outputDir
  await req(root+'/admin/players/'+player.player.id+'/approve',{method:'POST'});await req(root+'/players/me/submit',{method:'POST',body:{ticketId:player.ticket.id},admin:false,expected:401});
  const submit=await fetch(base+root+'/players/me/submit',{method:'POST',headers:{...headers,authorization:'Bearer '+player.token},body:JSON.stringify({ticketId:player.ticket.id})});assert.equal(submit.status,201);
  const host=await browser.newPage({viewport:{width:390,height:844}});const errors=[];host.on('pageerror',e=>{errors.push(e.message);console.error('HOST PAGE ERROR',e.message);});await host.goto(base+'/admin/'+game.id);await host.locator('#key').fill(key);await host.locator('#load').click();await host.locator('#commentary-panel > summary').click();await host.locator('#commentary-enabled').waitFor();await host.waitForFunction(()=>document.querySelector('#commentary-language').value==='hi');
+ await host.locator('#commentary-shoutouts').fill('3');
+ await host.locator('#commentary-save').click();
+ await host.waitForFunction(()=>document.querySelector('#commentary-status').textContent.startsWith('Commentary saved.'));
+ assert.equal((await req(root+'/commentary/admin/settings')).shoutoutsEvery,3);
  await host.screenshot({path:outputDir+'/commentary-host.png',fullPage:true});
  const tv=await browser.newPage({viewport:{width:1280,height:720}});tv.on('pageerror',e=>errors.push(e.message));await tv.goto(base+'/tv/'+game.joinCode);await tv.getByRole('button',{name:'Narration on'}).waitFor();
  await req(root+'/start',{method:'POST'});await req(root+'/commentary?after=0');
@@ -48,11 +52,23 @@ export async function commentaryChecks({base,key,db,browser,stop,start,outputDir
   assert.ok(polls.every(p=>p.settings.language==='hi'));
   for(let tries=0;tries<30;tries++){if((await db.query('SELECT count(*)::int AS count FROM game_commentary_events WHERE game_id=$1 AND status=\'READY\' AND kind=\'NUMBER\'',[game.id])).rows[0].count>=i+1)break;await new Promise(r=>setTimeout(r,80));}
   assert.equal((await db.query("SELECT count(*)::int AS count FROM game_commentary_events WHERE game_id=$1 AND kind='NUMBER'",[game.id])).rows[0].count,i+1);
+  if(i===2){
+   for(let tries=0;tries<30;tries++){
+    const {events}=await req(root+'/commentary?after=0');
+    if(events.some(event=>event.kind==='SHOUTOUT'))break;
+    await new Promise(r=>setTimeout(r,80));
+   }
+   const {rows}=await db.query("SELECT event_key,text FROM game_commentary_events WHERE game_id=$1 AND kind='SHOUTOUT' AND status='READY'",[game.id]);
+   assert.equal(rows.length,1);
+   assert.equal(rows[0].event_key,'shoutout:3');
+   assert.match(rows[0].text,/Riya Sharma.*15 में से 3.*अभी का नंबर टिकट पर है/);
+  }
  }
- // The fifth call also schedules a progress shout-out using actual submitted numbers.
- for(let tries=0;tries<30;tries++){await req(root+'/commentary?after=0');if((await db.query("SELECT count(*)::int AS count FROM game_commentary_events WHERE game_id=$1 AND kind='SHOUTOUT' AND status='READY'",[game.id])).rows[0].count)break;await new Promise(r=>setTimeout(r,80));}
- const shout=(await db.query("SELECT text FROM game_commentary_events WHERE game_id=$1 AND kind='SHOUTOUT'",[game.id])).rows[0].text;assert.match(shout,/Riya Sharma/);assert.match(shout,/5/);
- const first=(await req(root+'/commentary?after=0')).events;assert.ok(first.some(e=>e.kind==='NUMBER'&&e.text.includes(String(ticket[0]))));
+ const first=(await req(root+'/commentary?after=0')).events.filter(e=>e.kind==='NUMBER');
+ assert.equal(first.length,5);
+ assert.ok(first.some(e=>e.text.includes(String(ticket[0]))));
+ assert.equal(new Set(first.map(e=>e.text.replace(/\d+/g,'#'))).size,5);
+
  // A confirmed award is a separate event, even if the draw is paused for claim review.
  const category=(await db.query("SELECT id,name FROM winning_categories WHERE game_id=$1 AND rule_type='EARLY_FIVE'",[game.id])).rows[0];
  await db.query('INSERT INTO category_outcomes(category_id,game_id,tie_break_policy,resolved_sequence) VALUES($1,$2,$3,5) ON CONFLICT DO NOTHING',[category.id,game.id,'SHARED_PRIZE']);
