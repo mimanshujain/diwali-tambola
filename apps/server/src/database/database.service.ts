@@ -1,3 +1,5 @@
+import { COMMENTARY_INNUENDO_MIGRATION } from './migrations/015_commentary_innuendo.js';
+import { COMMENTARY_DIAGNOSTICS_MIGRATION } from './migrations/014_commentary_diagnostics.js';
 import { THEME_LAYERS_MIGRATION } from './migrations/013_theme_layers.js';
 import { COMMENTARY_MIGRATION } from './migrations/012_commentary.js';
 import { GAME_APPEARANCE_MIGRATION } from './migrations/011_game_appearance.js';
@@ -200,6 +202,16 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       if (!themeLayers.rowCount) {
         await client.query(THEME_LAYERS_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['013_theme_layers']);
+      }
+      const diagnostics = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['014_commentary_diagnostics']);
+      if (!diagnostics.rowCount) {
+        await client.query(COMMENTARY_DIAGNOSTICS_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['014_commentary_diagnostics']);
+      }
+      const innuendo = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['015_commentary_innuendo']);
+      if (!innuendo.rowCount) {
+        await client.query(COMMENTARY_INNUENDO_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['015_commentary_innuendo']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');

@@ -33,7 +33,7 @@ const pgPort=await freePort(),apiPort=await freePort();
 const outputDir=await mkdtemp(join(tmpdir(),'tambola-rehearsal-'));
 const pg=new EmbeddedPostgres({databaseDir:join(outputDir,'postgres'),port:pgPort,user:'postgres',password:'rehearsal-only-password',persistent:false,autoRehydrateSymlinks:true,postgresFlags:['-k','','-h','127.0.0.1'],onLog:()=>{},onError:console.error});
 const base='http://127.0.0.1:'+apiPort,key='rehearsal-only-admin-key';
-const env={...process.env,PORT:String(apiPort),DATABASE_URL:`postgresql://postgres:rehearsal-only-password@127.0.0.1:${pgPort}/tambola`,ADMIN_TOKEN:key,PUBLIC_GUEST_ORIGIN:''};
+const env={...process.env,PORT:String(apiPort),DATABASE_URL:`postgresql://postgres:rehearsal-only-password@127.0.0.1:${pgPort}/tambola`,ADMIN_TOKEN:key,PUBLIC_GUEST_ORIGIN:'',GEMINI_API_KEY:'',ELEVENLABS_API_KEY:''};
 let api,browser,db,logs='';
 async function start(){
  api=spawn(process.execPath,['apps/server/dist/main.js'],{cwd:root,env,stdio:['ignore','pipe','pipe']});
