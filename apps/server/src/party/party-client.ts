@@ -1,6 +1,9 @@
+import { browserVoiceJs } from '../commentary/browser-voice.js';
+
 export const PARTY_CLIENT_JS=String.raw`
 (()=>{
 if(!/^\/tv\/[^/]+$/.test(location.pathname))return;
+${browserVoiceJs}
 const css=document.createElement('style');css.textContent=
 '@keyframes partyPop{from{opacity:0;transform:scale(.75)}to{opacity:1;transform:scale(1)}}'+
 '@keyframes numberGlow{0%{filter:brightness(1.9);transform:scale(1.07)}100%{filter:brightness(1);transform:scale(1)}}'+
@@ -49,10 +52,7 @@ function speakNext(){
  try{
   const speech=new SpeechSynthesisUtterance(job.text);
   speech.lang=job.lang;
-  const voices=window.speechSynthesis.getVoices();
-  const locale=job.lang.toLowerCase(),language=locale.split('-')[0];
-  const voice=voices.find(v=>v.lang.toLowerCase().replace('_','-')===locale)
-   ||voices.find(v=>v.lang.toLowerCase().split(/[-_]/)[0]===language);
+  const voice=browserVoice(window.speechSynthesis.getVoices(),job.lang);
   if(voice)speech.voice=voice;
   speech.onend=finish;
   speech.onerror=finish;
@@ -100,8 +100,7 @@ const narrationButton=button('Narration on',()=>{narrationLocal=!narrationLocal;
 let narrationLocal=true;
 function browserNarration(line,settings){
  if(!sound||!narrationLocal||!commentaryConfig?.enabled||commentaryHalted)return;
- const lang=settings.language==='hi'?'hi-IN':settings.accent==='us'?'en-US':'en-IN';
- return speakLine(line,lang,'commentary');
+ return speakLine(line,commentaryLocale(settings),'commentary');
 }
 async function voiceNarration(event,settings){if(event.audio){try{await new Promise((resolve,reject)=>{const audio=new Audio('/games/'+encodeURIComponent(commentaryId)+'/commentary/'+event.seq+'/audio');commentaryAudio=audio;audio.onended=resolve;audio.onerror=reject;audio.play().catch(reject);setTimeout(()=>{audio.pause();resolve();},13000);});return;}catch{}}await browserNarration(event.text,settings);}
 async function drainCommentary(){if(commentarySpeaking)return;commentarySpeaking=true;try{while(commentaryQueue.length){const {event,settings}=commentaryQueue.shift();caption.textContent=event.text;caption.hidden=false;if(sound&&narrationLocal)await voiceNarration(event,settings);else await new Promise(resolve=>setTimeout(resolve,1300));}caption.hidden=true;}finally{commentarySpeaking=false;}}

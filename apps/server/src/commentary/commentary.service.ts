@@ -1,5 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
+import { hostId } from '../hosting/context.js';
+import { geminiKey, generateReaction, type GeminiReport } from './gemini-commentary.js';
 import type { QueryResultRow } from 'pg';
 
 export interface CommentarySettings {
@@ -19,6 +21,12 @@ export function parseSettings(input:Record<string,unknown>):CommentarySettings {
 interface Game extends QueryResultRow {id:string;status:string;emergency_stopped:boolean;next_number_sequence:number;}
 interface Event extends QueryResultRow {seq:string;game_id:string;event_key:string;kind:'NUMBER'|'WINNER'|'SHOUTOUT';language:'en'|'hi';text:string;status:string;lease_until:Date;audio:Buffer|null;}
 interface Fact {key:string;kind:Event['kind'];number?:number;name?:string;category?:string;hits?:number;ticketSize?:number;latestHit?:boolean;sequence:number;}
+export interface LiveAnnouncement extends QueryResultRow {kind:Event['kind']; at:Date; gemini:GeminiReport|null;}
+interface SpeechResult {
+ status:'generated'|'browser'|'voice_unconfigured'|'rejected'|'timeout'|'unavailable';
+ audio?:Buffer;
+ httpStatus?:number;
+}
 const voiceEnv=(settings:CommentarySettings)=>'COMMENTARY_ELEVEN_VOICE_'+(settings.voiceStyle==='licensed'?'LICENSED':settings.language.toUpperCase()+'_'+(settings.accent==='us'?'US':'IN'));
 const numberCalls = {
  en: [
@@ -59,37 +67,92 @@ const moodLines = {
  },
 };
 
-function fallback(f:Fact,c:CommentarySettings):string {
- if(f.kind==='WINNER')return c.language==='hi'?`${f.category} के विजेता ${f.name}! ज़ोरदार तालियाँ!`:`${f.name} wins ${f.category}! A round of applause!`;
+function scriptedLine(f:Fact,c:CommentarySettings,withReaction:boolean):string {
+ if(f.kind==='WINNER'){
+  const result=c.language==='hi'?`${f.category} के विजेता ${f.name}!`:`${f.name} wins ${f.category}!`;
+  return withReaction?result:result+(c.language==='hi'?' ज़ोरदार तालियाँ!':' A round of applause!');
+ }
  if(f.kind==='SHOUTOUT'){
   const hits=f.hits!, size=f.ticketSize!;
   const progress=c.language==='hi'?`${f.name} के टिकट पर ${size} में से ${hits} नंबर आ चुके हैं।`:`${f.name} has matched ${hits} of ${size} numbers.`;
+  if(withReaction)return progress;
   return progress+' '+moodLines[c.language][ticketMood(hits,size,Boolean(f.latestHit))];
  }
+ if(withReaction)return c.language==='hi'?`इस बार निकला ${f.number}!`:`We've called ${f.number}!`;
  const variants=numberCalls[c.language];
  // Index by the announcement count so intervals like 5 don't repeat the same phrase.
  return variants[(Math.floor(f.sequence/c.callsEvery)-1)%variants.length](f.number!);
 }
+
+function sampleFact(scenario:unknown,number:unknown,c:CommentarySettings):Fact {
+ const sample={key:'preview',sequence:20};
+ const player={...sample,kind:'SHOUTOUT' as const,name:c.language==='hi'?'मीरा':'Meera',ticketSize:15};
+ switch(scenario){
+  case 'number':
+   if(!boundedInt(number,1,90))throw new BadRequestException('Choose a preview number between 1 and 90');
+   return {...sample,kind:'NUMBER',number,sequence:Math.ceil(sample.sequence/c.callsEvery)*c.callsEvery};
+  case 'match':return {...player,hits:5,latestHit:true,sequence:14};
+  case 'near-win':return {...player,hits:14,latestHit:true,sequence:48};
+  case 'slow-start':return {...player,hits:0,latestHit:false,sequence:8};
+  case 'winner':return {...sample,kind:'WINNER',name:player.name,category:c.language==='hi'?'फुल हाउस':'Full House',sequence:52};
+  default:throw new BadRequestException('Choose a commentary preview scenario');
+ }
+}
+
+function draftSettings(current:CommentarySettings,changes:unknown):CommentarySettings {
+ if(changes===null||typeof changes!=='object'||Array.isArray(changes))throw new BadRequestException('Invalid commentary settings');
+ if(Object.keys(changes).some(key=>!Object.hasOwn(defaults,key)))throw new BadRequestException('Unknown commentary setting');
+ const settings=parseSettings({...current,...changes});
+ if(settings.voiceStyle==='licensed'&&settings.voiceProvider!=='elevenlabs')throw new BadRequestException('Licensed voice requires cloud speech');
+ return settings;
+}
 /** Grounded facts and stable event keys keep LLM latency away from number draws. */
 @Injectable()
 export class CommentaryService {
+ private readonly previews=new Map<string,{until:number;count:number}>();
  constructor(private readonly db:DatabaseService){}
  private async game(id:string):Promise<Game> {const g=(await this.db.query<Game>('SELECT id,status,emergency_stopped,next_number_sequence FROM games WHERE id=$1',[uuid(id)])).rows[0];if(!g)throw new NotFoundException('Game not found');return g;}
  async settings(id:string):Promise<CommentarySettings & {aiAvailable:boolean;voiceAvailable:boolean;licensedVoiceAvailable:boolean}> {
   await this.game(id);const row=(await this.db.query<Record<string,unknown>&QueryResultRow>(`SELECT enabled,language,tone,shoutout_mode AS "shoutoutMode",calls_every AS "callsEvery",shoutouts_every AS "shoutoutsEvery",announce_winners AS "announceWinners",family_friendly AS "familyFriendly",allow_sexual_references AS "allowSexualReferences",accent,voice_provider AS "voiceProvider",voice_style AS "voiceStyle" FROM game_commentary_settings WHERE game_id=$1`,[id])).rows[0];
-  const c=parseSettings(row??{});return {...c,aiAvailable:Boolean(process.env.GEMINI_API_KEY),voiceAvailable:Boolean(process.env.ELEVENLABS_API_KEY&&process.env[voiceEnv(c)]),licensedVoiceAvailable:Boolean(process.env.COMMENTARY_ELEVEN_VOICE_LICENSED)};
+  const c=parseSettings(row??{});return {...c,aiAvailable:Boolean(geminiKey()),voiceAvailable:Boolean(process.env.ELEVENLABS_API_KEY?.trim()&&process.env[voiceEnv(c)]?.trim()),licensedVoiceAvailable:Boolean(process.env.COMMENTARY_ELEVEN_VOICE_LICENSED)};
  }
- async update(id:string,body:Record<string,unknown>):Promise<ReturnType<CommentaryService['settings']>> {
-  await this.game(id);const existing=await this.settings(id);const keys=Object.keys(defaults);
-  if(Object.keys(body??{}).some(key=>!keys.includes(key)))throw new BadRequestException('Unknown commentary setting');
-  const c=parseSettings({...existing,...body});
-  if(c.voiceProvider==='elevenlabs'&&(!process.env.ELEVENLABS_API_KEY||!process.env[voiceEnv(c)]))throw new BadRequestException('The selected cloud voice has not been configured by the service owner');
-  if(c.voiceStyle==='licensed'&&c.voiceProvider!=='elevenlabs')throw new BadRequestException('Licensed voice requires cloud speech');
+ async adminSettings(id:string){
+  const settings=await this.settings(id);
+  const latest=(await this.db.query<LiveAnnouncement>(`SELECT kind,created_at AS at,gemini_report AS gemini
+   FROM game_commentary_events WHERE game_id=$1 AND status='READY' ORDER BY seq DESC LIMIT 1`,[id])).rows[0];
+  return {...settings,lastAnnouncement:latest??null};
+ }
+ async update(id:string,body:Record<string,unknown>){
+  const c=draftSettings(await this.settings(id),body);
+  if(c.voiceProvider==='elevenlabs'&&(!process.env.ELEVENLABS_API_KEY?.trim()||!process.env[voiceEnv(c)]?.trim()))throw new BadRequestException('The selected cloud voice has not been configured by the service owner');
   await this.db.query(`INSERT INTO game_commentary_settings(game_id,enabled,language,tone,calls_every,shoutouts_every,shoutout_mode,announce_winners,family_friendly,allow_sexual_references,accent,voice_provider,voice_style)
    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
    ON CONFLICT(game_id) DO UPDATE SET enabled=$2,language=$3,tone=$4,calls_every=$5,shoutouts_every=$6,shoutout_mode=$7,announce_winners=$8,family_friendly=$9,allow_sexual_references=$10,accent=$11,voice_provider=$12,voice_style=$13,updated_at=NOW()`,
    [id,c.enabled,c.language,c.tone,c.callsEvery,c.shoutoutsEvery,c.shoutoutMode,c.announceWinners,c.familyFriendly,c.allowSexualReferences,c.accent,c.voiceProvider,c.voiceStyle]);
-  return this.settings(id);
+  return this.adminSettings(id);
+ }
+
+ /** The host can audition draft settings with fictional facts before saving. */
+ async preview(id:string,body:Record<string,unknown>){
+  const settings=draftSettings(await this.settings(id),body.settings===undefined?{}:body.settings);
+  const fact=sampleFact(body.scenario,body.number,settings);
+  this.reservePreview();
+  const line=await this.compose(fact,settings);
+  const {audio,...voice}=await this.speech(line.text,settings,4500);
+  return {...line,voice:{...voice,audio:audio?.toString('base64')??null}};
+ }
+
+ private reservePreview():void {
+  const host=hostId()??'lan',now=Date.now();
+  let budget=this.previews.get(host);
+  if(!budget||budget.until<=now){
+   if(this.previews.size>=1000)for(const [key,entry] of this.previews)if(entry.until<=now)this.previews.delete(key);
+   if(this.previews.size>=1000)throw new HttpException('Preview is busy. Try again shortly.',HttpStatus.TOO_MANY_REQUESTS);
+   budget={until:now+60_000,count:0};
+   this.previews.set(host,budget);
+  }
+  if(budget.count>=10)throw new HttpException('Preview limit reached. Try again in a minute.',HttpStatus.TOO_MANY_REQUESTS);
+  budget.count++;
  }
  /** TV poll. At most one provider job is started per poll and game; every event is unique and durable. */
  async poll(id:string,afterRaw:unknown):Promise<{settings:CommentarySettings;halted:boolean;events:{seq:number;kind:string;text:string;audio:boolean}[]}> {
@@ -129,27 +192,27 @@ export class CommentaryService {
   });
  }
  private async produce(id:string,event:Event,f:Fact,c:CommentarySettings):Promise<void>{
-  let line=fallback(f,c);
-  if(process.env.GEMINI_API_KEY){try{const flourish=await this.flourish(f,c);if(flourish)line+=' '+flourish;}catch(e){console.warn('Commentary text provider unavailable',e instanceof Error?e.message:'unknown error');}}
-  let audio:Buffer|null=null;
-  if(c.voiceProvider==='elevenlabs'){try{audio=await this.speech(line,c);}catch(e){console.warn('Commentary speech provider unavailable',e instanceof Error?e.message:'unknown error');}}
-  await this.db.query("UPDATE game_commentary_events SET status='READY',text=$3,audio=$4 WHERE game_id=$1 AND seq=$2 AND status='PROCESSING'",[id,event.seq,line,audio]);
+  const line=await this.compose(f,c),voice=await this.speech(line.text,c);
+  if(line.gemini.status!=='generated'&&line.gemini.status!=='no_key')console.warn('Commentary Gemini fallback',line.gemini);
+  if(c.voiceProvider==='elevenlabs'&&voice.status!=='generated')console.warn('Commentary cloud voice fallback',voice.status,voice.httpStatus??'');
+  await this.db.query("UPDATE game_commentary_events SET status='READY',text=$3,audio=$4,gemini_report=$5 WHERE game_id=$1 AND seq=$2 AND status='PROCESSING'",[id,event.seq,line.text,voice.audio??null,line.gemini]);
  }
- private async flourish(f:Fact,c:CommentarySettings):Promise<string>{
-  const signal=AbortSignal.timeout(4000);
-  const prompt=`Write one fresh Tambola host reaction with a ${c.tone} tone, at most 16 words, ${c.language==='hi'?'in natural Hindi Devanagari':'in natural English'}. Facts: ${JSON.stringify({event:f.kind,number:f.number,calledOnTicket:f.hits,ticketSize:f.ticketSize,latestCallMatched:f.latestHit,callIndex:f.sequence})}. For a shout-out, respond to the ticket progress with gentle suspense or encouragement. Suggest how the moment might feel without claiming to know the player’s emotions. Do not invent players, winners, progress, prizes, or numbers; do not repeat facts. No names or digits in the response. No harassment, profanity, or stereotypes. ${c.familyFriendly?'Family friendly for children. No sexual references.':c.allowSexualReferences?'Adults are present; mild non-explicit innuendo is allowed. No explicit sexual content.':'No sexual references.'} Return only the reaction.`;
-  const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent',{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY!,'content-type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.8,maxOutputTokens:60}}),signal});
-  if(!response.ok)throw Error('Gemini '+response.status);
-  const data=await response.json() as {candidates?:{content?:{parts?:{text?:string}[]}}[]};const value=data.candidates?.[0]?.content?.parts?.map(p=>p.text??'').join('').trim()??'';
-  // The deterministic first sentence is always the factual source of truth.
-  if(value.length>140||/\d|[<>\r\n]/.test(value)||(/\b(?:fuck|shit|porn|nude|naked|rape)\b|(?:अश्लील|नग्न|शारीरिक संबंध)/i.test(value)||(!c.allowSexualReferences&&/\b(?:sex|sexy|kiss|bedroom|hookup)\b|सेक्स/i.test(value))))return '';
-  return value;
+ private async compose(f:Fact,c:CommentarySettings){
+  const {report, reaction}=await generateReaction({event:f.kind,number:f.number,calledOnTicket:f.hits,ticketSize:f.ticketSize,latestCallMatched:f.latestHit,callIndex:f.sequence},c);
+  const script=scriptedLine(f,c,reaction!==null);
+  return {text:reaction?script+' '+reaction:script,script,reaction,gemini:report};
  }
- private async speech(line:string,c:CommentarySettings):Promise<Buffer|null>{
-  const voice=process.env[voiceEnv(c)];if(!voice||!process.env.ELEVENLABS_API_KEY)return null;
-  const response=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(voice)+'?output_format=mp3_44100_128',{method:'POST',headers:{'xi-api-key':process.env.ELEVENLABS_API_KEY,'content-type':'application/json'},body:JSON.stringify({text:line.slice(0,300),model_id:'eleven_flash_v2_5',language_code:c.language}),signal:AbortSignal.timeout(8000)});
-  if(!response.ok)throw Error('ElevenLabs '+response.status);
-  const bytes=Buffer.from(await response.arrayBuffer());return bytes.length&&bytes.length<=512_000?bytes:null;
+ private async speech(line:string,c:CommentarySettings,timeout=8000):Promise<SpeechResult>{
+  if(c.voiceProvider==='browser')return {status:'browser'};
+  const voice=process.env[voiceEnv(c)]?.trim(),key=process.env.ELEVENLABS_API_KEY?.trim();
+  if(!voice||!key)return {status:'voice_unconfigured'};
+  const signal=AbortSignal.timeout(timeout);
+  try{
+   const response=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(voice)+'?output_format=mp3_44100_128',{method:'POST',headers:{'xi-api-key':key,'content-type':'application/json'},body:JSON.stringify({text:line,model_id:'eleven_flash_v2_5',language_code:c.language}),signal});
+   if(!response.ok)return {status:'rejected',httpStatus:response.status};
+   const audio=Buffer.from(await response.arrayBuffer());
+   return audio.length&&audio.length<=512_000?{status:'generated',audio}:{status:'unavailable'};
+  }catch{return {status:signal.aborted?'timeout':'unavailable'};}
  }
  async audio(id:string,seqRaw:string):Promise<Buffer>{
   await this.game(id);const seq=Number(seqRaw);if(!Number.isSafeInteger(seq)||seq<1)throw new BadRequestException('Invalid commentary ID');

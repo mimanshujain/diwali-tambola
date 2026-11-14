@@ -8,8 +8,10 @@ export class CommentaryController {
  poll(@Param('gameId') id:string,@Query('after') after?:string){return this.service.poll(id,after);}
  @Get(':seq/audio') @Header('Cache-Control','private, max-age=300')
  async audio(@Param('gameId') id:string,@Param('seq') seq:string,@Res() res:{setHeader:(name:string,value:string)=>void;send:(value:Buffer)=>void}){const bytes=await this.service.audio(id,seq);res.setHeader('Content-Type','audio/mpeg');res.send(bytes);}
- @Get('admin/settings')
- settings(@Param('gameId') id:string,@Headers('x-admin-key') key?:string){assertAdmin(key);return this.service.settings(id);}
+ @Get('admin/settings') @Header('Cache-Control','no-store, private')
+ settings(@Param('gameId') id:string,@Headers('x-admin-key') key?:string){assertAdmin(key);return this.service.adminSettings(id);}
  @Post('admin/settings')
  update(@Param('gameId') id:string,@Body() body:Record<string,unknown>,@Headers('x-admin-key') key?:string){assertAdmin(key);return this.service.update(id,body??{});}
+ @Post('admin/preview') @Header('Cache-Control','no-store, private')
+ preview(@Param('gameId') id:string,@Body() body:Record<string,unknown>,@Headers('x-admin-key') key?:string){assertAdmin(key);return this.service.preview(id,body??{});}
 }

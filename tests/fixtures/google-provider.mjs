@@ -11,3 +11,14 @@ OAuth2Client.prototype.getToken=async function({code}){
  return {tokens:{id_token:input+'.'+sign('RSA-SHA256',Buffer.from(input),privateKey).toString('base64url')}};
 };
 OAuth2Client.prototype.getFederatedSignonCertsAsync=async function(){return {certs:{'test-key':publicKey.export({type:'spki',format:'pem'})},format:'PEM'};};
+
+const originalFetch=globalThis.fetch;
+globalThis.fetch=async (url,options)=>{
+ if(typeof url!=='string'||!url.startsWith('https://generativelanguage.googleapis.com/'))return originalFetch(url,options);
+ if(options?.headers['x-goog-api-key']!=='gemini-rehearsal-key')return new Response(null,{status:403});
+ const prompt=JSON.parse(options.body).contents[0].parts[0].text;
+ if(prompt.includes('"number":90'))return new Response(null,{status:429});
+ const text=prompt.includes('using Devanagari')?'लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!':
+  prompt.includes('adults-only audience')?'That lucky ball is playing hard to get!':'Luck just pulled up a chair!';
+ return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text}]}}]});
+};
