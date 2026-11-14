@@ -7,8 +7,10 @@ export const LIVE_CLIENT_JS = String.raw`
   if (!gameId || !/^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(gameId)) return;
   const status = document.createElement('div');
   status.id = 'live-indicator'; status.setAttribute('role', 'status');
-  status.style.cssText='position:fixed;bottom:10px;right:10px;padding:6px 10px;background:#182739;color:#d6e7f7;border:1px solid #4e6377;border-radius:15px;font:12px system-ui;z-index:99;pointer-events:none';
-  status.textContent = 'Connecting'; document.body.append(status);
+  const statusSlot = document.querySelector('[data-live-status]');
+  if(statusSlot)status.className='live-indicator';
+  else status.style.cssText='position:fixed;bottom:10px;right:10px;padding:6px 10px;background:#182739;color:#d6e7f7;border:1px solid #4e6377;border-radius:15px;font:12px system-ui;z-index:99;pointer-events:none';
+  status.textContent = 'Connecting'; (statusSlot||document.body).append(status);
   let timer = null;
   function refreshSoon(){if(timer)return;timer=setTimeout(function(){timer=null;window.dispatchEvent(new Event('tambola:changed'));},120);}
   if(typeof io !== 'function') {status.textContent='Polling fallback';return;}

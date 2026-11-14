@@ -63,11 +63,13 @@ export async function deletionBrowserChecks({browser,base,key}){
  const cardGame=await create('Delete from dashboard'),consoleGame=await create('Delete from console');
  await page.goto(base+'/admin');await page.locator('#key').fill(key);await page.locator('#load').click();
  const card=page.locator('.game-card').filter({hasText:cardGame.name});await card.waitFor();
+ await card.getByText('Game options',{exact:true}).click();
  page.once('dialog',d=>d.dismiss());await card.getByRole('button',{name:'Delete game…',exact:true}).click();assert.equal(await card.count(),1);
  page.once('dialog',d=>d.accept('WRONG'));await card.getByRole('button',{name:'Delete game…',exact:true}).click();assert.equal(await card.count(),1);
  page.once('dialog',d=>d.accept(cardGame.joinCode));await card.getByRole('button',{name:'Delete game…',exact:true}).click();await card.waitFor({state:'detached'});
  await page.goto(base+'/admin/'+consoleGame.id);await page.waitForFunction(()=>document.querySelector('#game-code').textContent.length===6);
- await page.getByText('Manual call, ending & deleting',{exact:true}).click();
+ await page.getByRole('link',{name:'Activity & recovery'}).click();
+ await page.getByText('End or delete this game',{exact:true}).click();
  page.once('dialog',d=>d.accept(consoleGame.joinCode));await page.locator('#delete-game').click();await page.waitForURL(base+'/admin');
  assert.equal((await fetch(base+'/games/'+consoleGame.id)).status,404);assert.deepEqual(errors,[]);
  console.log('PASS delete buttons, cancel, wrong code, confirmed deletion and console redirect');

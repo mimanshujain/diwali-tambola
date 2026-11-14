@@ -29,7 +29,8 @@ export async function readinessBrowserChecks({browser,base,key}) {
   assert.equal(await publicTv.locator('#lobby-network-warning').isVisible(),false);await publicTv.close();
   assert.ok(await tv.getByRole('button',{name:/sound|press ok/i}).count());
   assert.ok(await tv.getByRole('button',{name:/Hindi voice on/i}).count());
-  await host.goto(base+'/admin/'+game.id);await host.waitForFunction(()=>document.querySelector('#status').textContent==='CREATED');
+  const hostNav=host.getByRole('navigation',{name:'Host sections'});
+  await host.goto(base+'/admin/'+game.id);await host.waitForFunction(()=>document.querySelector('#status').textContent==='Lobby');
   await host.locator('#enable-alerts').click();
   await guest.goto(base+'/g/'+game.joinCode);await guest.locator('#name').fill('Priya');
   assert.equal(await guest.locator('#register-button').isEnabled(),true);await guest.locator('#register-button').click();
@@ -59,7 +60,7 @@ export async function readinessBrowserChecks({browser,base,key}) {
   const lateContext=await browser.newContext({viewport:{width:390,height:844}}),late=await lateContext.newPage();late.on('pageerror',error=>errors.push(error.message));
   await late.goto(base+'/g/'+game.joinCode);await late.locator('#name').fill('Late arrival');assert.equal(await late.locator('#register-button').isEnabled(),true);await late.locator('#register-button').click();
   await late.waitForFunction(()=>document.querySelector('#status').textContent==='Submitted ✓');assert.match(await late.locator('#approval').textContent(),/host to approve/i);
-  await host.locator('#player-search').fill('Late arrival');await host.getByRole('button',{name:'Approve identity'}).click();await late.waitForFunction(()=>document.querySelector('#approval').textContent==='');
+  await hostNav.getByRole('link',{name:/Players & tickets/}).click();await host.locator('#player-search').fill('Late arrival');await host.getByRole('button',{name:'Approve identity'}).click();await late.waitForFunction(()=>document.querySelector('#approval').textContent==='');
   await lateContext.close();
 
   let capture,release;const captured=new Promise(resolve=>capture=resolve),released=new Promise(resolve=>release=resolve);let delay=true;
@@ -73,23 +74,23 @@ export async function readinessBrowserChecks({browser,base,key}) {
   assert.equal(await tv.locator('#history .history-item').first().locator('.history-sequence').textContent(),'#1');
   assert.equal(await tv.locator('#history .history-item').first().locator('.history-number').textContent(),String(player.ticket.numbers[0]));
   await tv.locator('.party-announce').waitFor({state:'visible'});assert.match(await tv.locator('.party-announce').textContent(),/AUTO-QUALIFIED/);
-  await guest.getByRole('button',{name:'Early Five',exact:true}).click();
+  await guest.getByRole('link',{name:'Prizes',exact:true}).click();await guest.getByRole('button',{name:'Claim Early Five',exact:true}).click();
   await host.locator('#claim-banner').waitFor({state:'visible'});assert.match(await host.locator('#claim-message').textContent(),/Priya.*Early Five/);
-  await host.waitForFunction(()=>document.querySelector('#status').textContent==='PAUSED');await tv.waitForFunction(()=>document.querySelector('#status').textContent==='PAUSED');
+  await host.waitForFunction(()=>document.querySelector('#status').textContent==='Paused');await tv.waitForFunction(()=>document.querySelector('#status').textContent==='PAUSED');
   await host.locator('#claim-review').click();await host.locator('#review-panel').waitFor({state:'visible'});await tv.locator('#review').waitFor({state:'visible'});
   assert.match(await tv.locator('#review-title').textContent(),/Priya/);assert.equal(await tv.locator('#review-grid .review-cell').count(),27);assert.ok(await tv.locator('#review-grid .hit').count()>=5);
   assert.equal(await host.locator('#resume').isDisabled(),true);await host.locator('#review-confirm').click();await tv.locator('#review').waitFor({state:'hidden'});
-  await host.waitForFunction(()=>document.querySelector('#status').textContent==='RUNNING');
+  await host.waitForFunction(()=>document.querySelector('#status').textContent==='In play');
   const called=new Set(player.ticket.numbers.slice(0,5));
   const later=[...Array(90).keys()].map(index=>index+1).filter(number=>!called.has(number)).slice(0,12);
   for(const number of later)await request(root+'/calls/manual',{...admin,body:{number}});
   await tv.waitForFunction(number=>{const items=Array.from(document.querySelectorAll('#history .history-item'));return document.querySelector('#history-page').textContent==='Calls 3–17 of 17'&&items.length===15&&items[0].querySelector('.history-sequence').textContent==='#3'&&items.at(-1).querySelector('.history-sequence').textContent==='#17'&&items.at(-1).querySelector('.history-number').textContent===String(number);},later.at(-1),{timeout:15000});
   for(const number of later)called.add(number);const powerNumber=[...Array(90).keys()].map(index=>index+1).find(number=>!called.has(number));
-  await guest.locator('summary').filter({hasText:'Lucky Strike'}).click();await guest.locator('#powerNumber').fill(String(powerNumber));await guest.locator('#powerSubmit').click();
+  await guest.getByRole('link',{name:'Calls',exact:true}).click();await guest.locator('summary').filter({hasText:'Lucky Strike'}).click();await guest.locator('#powerNumber').fill(String(powerNumber));await guest.locator('#powerSubmit').click();
   await host.locator('#power-banner').waitFor({state:'visible'});assert.match(await host.locator('#power-message').textContent(),/Priya.*Game paused/);
   await host.locator('#power-review').click();host.once('dialog',dialog=>dialog.accept());await host.getByRole('button',{name:'Approve & call'}).click();
   await tv.waitForFunction(number=>document.querySelector('#latest').textContent===String(number),powerNumber);assert.equal((await request(root)).status,'PAUSED');
-  await host.locator('#resume').click();await host.waitForFunction(()=>document.querySelector('#status').textContent==='RUNNING');
+  await hostNav.getByRole('link',{name:'Live round'}).click();await host.locator('#resume').click();await host.waitForFunction(()=>document.querySelector('#status').textContent==='In play');
   await tv.getByRole('button',{name:'Spotify',exact:true}).click();await tv.locator('.spotify-panel input').fill('https://example.com/playlist/wrong');await tv.getByRole('button',{name:'Load player'}).click();assert.match(await tv.locator('.spotify-panel [role=status]').textContent(),/Spotify playlist/);
   await tv.route('https://open.spotify.com/**',route=>route.fulfill({status:200,contentType:'text/html',body:'Spotify test player'}));
   await tv.locator('.spotify-panel input').fill('https://open.spotify.com/playlist/1234567890123456789012');await tv.getByRole('button',{name:'Load player'}).click();assert.match(await tv.locator('.spotify-panel iframe').getAttribute('src'),/open\.spotify\.com\/embed\/playlist/);
