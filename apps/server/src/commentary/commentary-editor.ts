@@ -44,6 +44,7 @@ const geminiReasons={
  invalid_key:'Google rejected the API key. Check GEMINI_API_KEY in the server environment.',access_denied:'Google denied access. Check the Gemini API key restrictions and project permissions.',
  model_unavailable:'This model is unavailable to the project. Check GEMINI_MODEL and model access in Google AI Studio.',
  quota:'Gemini reached a request or usage limit. Check the project quota and try again.',billing:'Gemini requires a project or billing change. Check the project in Google AI Studio.',
+ payment_required:'Gemini Prepay credits are unavailable. Open the API key’s project in Google AI Studio to set up Prepay or add credits.',
  rejected:'Gemini rejected the request. Check the server model configuration.',unavailable:'Could not reach Gemini or the service had an error. Try again shortly.',
  timeout:'Gemini did not answer before the commentary timeout. Try again.',blocked:'Gemini blocked this sample under its safety settings. Try a different event or audience setting.',
  truncated:'Gemini ended before it finished the line. Try again.',empty:'Gemini returned no usable text. Try again.',filtered:'The app filtered this reply. Try another sample or tone.',
@@ -52,7 +53,8 @@ function geminiSummary(report){
  if(!report)return 'Source unavailable for older announcements.';
  const model=report.model?' ('+report.model+')':'';
  if(report.status==='generated')return 'Gemini'+model+' added a reaction.';
- return 'Scripted fallback'+model+(report.httpStatus?' · Google HTTP '+report.httpStatus:'')+'. '+(geminiReasons[report.status]||'Try a new preview.');
+ const reason=report.httpStatus===402?'payment_required':report.status;
+ return 'Scripted fallback'+model+(report.httpStatus?' · Google HTTP '+report.httpStatus:'')+'. '+(geminiReasons[reason]||'Try a new preview.');
 }
 function fillCommentary(c){
  const event=c.lastAnnouncement,kinds={NUMBER:'Number call',SHOUTOUT:'Player shout-out',WINNER:'Winner'};

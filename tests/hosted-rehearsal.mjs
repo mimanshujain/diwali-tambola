@@ -130,7 +130,11 @@ try{
  }
  await checkHostAccount('/admin');await page.waitForSelector('.game-card');assert.equal(await page.locator('.game-card').count(),1);assert.equal(await page.locator('#key').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(output,'host-phone.png'),fullPage:true});
  await page.goto(origin+'/admin/'+id);await page.locator('#commentary-panel summary').click();
- await page.locator('#commentary-language').selectOption('en');await page.locator('#commentary-generate').click();
+ await page.locator('#commentary-language').selectOption('en');
+ await page.locator('#commentary-test-number').fill('89');await page.locator('#commentary-generate').click();
+ await page.waitForFunction(()=>document.querySelector('#commentary-preview-status').textContent.includes('Gemini Prepay credits are unavailable'));
+ assert.match(await page.locator('#commentary-preview-status').textContent(),/Scripted fallback.*Google HTTP 402/);
+ await page.locator('#commentary-test-number').fill('42');await page.locator('#commentary-generate').click();
  await page.getByText('Luck just pulled up a chair!',{exact:true}).waitFor();
  assert.match(await page.locator('#commentary-preview-status').textContent(),/Gemini \(gemini-3.5-flash-lite\) added a reaction/);
  assert.match(await page.locator('#commentary-preview-script').textContent(),/42/);

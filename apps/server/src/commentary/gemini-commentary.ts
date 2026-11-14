@@ -7,7 +7,7 @@ const explicit = /\b(?:fuck\w*|shit\w*|porn\w*|nude|naked|rape\w*)\b|अश्�
 const sexual = /\b(?:sex\w*|kiss\w*|bedroom|hook[ -]?up|foreplay|turn[ -]on)\b|सेक्स|चुंबन|चुम्बन|चूम/i;
 
 type Status = 'generated' | 'no_key' | 'invalid_model' | 'invalid_key' | 'access_denied' | 'model_unavailable' |
-  'quota' | 'billing' | 'rejected' | 'unavailable' | 'timeout' | 'blocked' | 'truncated' | 'empty' | 'filtered';
+  'quota' | 'billing' | 'payment_required' | 'rejected' | 'unavailable' | 'timeout' | 'blocked' | 'truncated' | 'empty' | 'filtered';
 export interface GeminiReport {
   status: Status;
   model: string | null;
@@ -43,6 +43,7 @@ async function rejection(response: Response): Promise<Status> {
       return body?.error?.status === 'FAILED_PRECONDITION' ? 'billing' : 'rejected';
     }
     case 401: return 'invalid_key';
+    case 402: return 'payment_required';
     case 403: return 'access_denied';
     case 404: return 'model_unavailable';
     case 429: return 'quota';

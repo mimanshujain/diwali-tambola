@@ -22,7 +22,9 @@ During play, **Refresh live status** shows which provider contributed to the las
 
 ## Set up the providers
 
-Create an API key in [Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY` on the API server. This is enough for AI text. Select **TV browser voice** to read it aloud without a second API key. Set the optional `GEMINI_MODEL` to a Gemini text model ID from your project if you want to change it. A blank override uses `gemini-3.5-flash-lite`.
+Create an API key in [Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY` on the API server. The project that owns the key needs Gemini API access and any required billing. Select **TV browser voice** to read generated text aloud without a second API key. Set the optional `GEMINI_MODEL` to a Gemini text model ID from your project if you want to change it. A blank override uses `gemini-3.5-flash-lite`.
+
+If a preview reports **Google HTTP 402**, find the key’s project on [AI Studio's Projects page](https://aistudio.google.com/projects) and check its **Billing Tier** or **Status**. Follow **Set up Prepay** or **No credits** for that project, or use **Buy credits** in [AI Studio Billing](https://aistudio.google.com/billing). Generate another preview once the balance is active. A billing-only update takes effect with the existing key and model on Render or the Pi.
 
 The app announces the called number, ticket progress or winner from saved game data. Gemini writes a short reaction using the event type, number and hit counts. Player names stay out of Gemini requests. If Gemini is unavailable or exceeds the 5.5-second timeout, the app uses its scripted announcement.
 

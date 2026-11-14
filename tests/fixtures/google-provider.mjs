@@ -17,6 +17,7 @@ globalThis.fetch=async (url,options)=>{
  if(typeof url!=='string'||!url.startsWith('https://generativelanguage.googleapis.com/'))return originalFetch(url,options);
  if(options?.headers['x-goog-api-key']!=='gemini-rehearsal-key')return new Response(null,{status:403});
  const prompt=JSON.parse(options.body).contents[0].parts[0].text;
+ if(prompt.includes('"number":89'))return new Response(null,{status:402});
  if(prompt.includes('"number":90'))return new Response(null,{status:429});
  const text=prompt.includes('using Devanagari')?'लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!':
   prompt.includes('adults-only audience')?'That lucky ball is playing hard to get!':'Luck just pulled up a chair!';

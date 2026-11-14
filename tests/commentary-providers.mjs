@@ -38,7 +38,7 @@ test('Gemini audience settings share the fallback and keep provider safety filte
  let body;
  const responses=[answer('This is a kiss of luck!'),answer('This is a kiss of luck!'),answer('Explicit porn details'),answer('One to go! १')];
  mockProvider(t,{GEMINI_API_KEY:'test-only-key',GEMINI_MODEL:'gemini-3.5-flash-lite'},async(url,options)=>{
-  assert.match(url,/gemini-2\.5-flash-lite:generateContent$/);
+  assert.match(url,/gemini-3\.5-flash-lite:generateContent$/);
   body=JSON.parse(options.body);return responses.shift();
  });
  const service=new CommentaryService({}),adult=parseSettings({familyFriendly:false,allowSexualReferences:true});
@@ -55,6 +55,7 @@ test('Gemini errors are actionable without exposing provider response text',asyn
  const cases=[
   [Response.json({error:{message:'test-only-key',details:[{reason:'API_KEY_INVALID'}]}},{status:400}),'invalid_key',400],
   [Response.json({error:{status:'FAILED_PRECONDITION'}},{status:400}),'billing',400],
+  [Response.json({error:{code:402,status:'RESOURCE_EXHAUSTED',message:'Your prepayment credits are depleted.'}},{status:402}),'payment_required',402],
   [new Response(null,{status:403}),'access_denied',403],
   [new Response(null,{status:404}),'model_unavailable',404],
   [new Response(null,{status:429}),'quota',429],
