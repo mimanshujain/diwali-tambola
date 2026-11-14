@@ -21,7 +21,7 @@ const previews = [
   { id: 'print', label: 'Print' },
 ] as const;
 
-export const appearanceFields = `
+const editorFields = `
 <label>Event name<input id="appearance-name" maxlength="100" required value="Tambola" placeholder="Tambola"></label>
 <label>Welcome message (optional)<textarea id="appearance-welcome" maxlength="240" rows="2" placeholder="Welcome, everyone. Let’s play!"></textarea></label>
 <fieldset class="appearance-group">
@@ -45,6 +45,8 @@ export const appearanceFields = `
     <button type="button" id="appearance-reset" class="ghost small-button">Reset customizations</button>
   </div>
 </fieldset>
+`;
+const previewFields = `
 <fieldset class="appearance-group">
   <legend>Preview</legend>
   <div class="appearance-preview-tabs" role="group" aria-label="Preview surface">
@@ -66,6 +68,8 @@ export const appearanceFields = `
   <p class="small">Printed tickets use white paper with your chosen trim.</p>
 </fieldset>
 `;
+
+export const appearanceFields = `<div class="editor-columns"><div class="form-flow">${editorFields}</div><div>${previewFields}</div></div>`;
 
 export const appearanceEditorJs = String.raw`
 let appearanceTheme='classic',appearanceLayers={},appearanceDirty=false,appearanceLoaded=false;

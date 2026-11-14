@@ -6,18 +6,26 @@ export async function browserChecks({browser,base,key,state,outputDir}){
  const errors=[];
  const hostContext=await browser.newContext({viewport:{width:1440,height:1000}});
  const host=await hostContext.newPage();host.on('pageerror',e=>errors.push(e.message));
- await host.goto(base+'/admin');await host.locator('#key').fill(key);await host.locator('#load').click();
+ await host.goto(base+'/admin');assert.ok(await host.locator('header #key').isVisible());await host.locator('#key').fill(key);await host.locator('#load').click();
  await host.locator('.game-card').first().waitFor();assert.equal(await host.locator('.game-card').filter({hasText:state.game.name}).count(),0);
  await host.locator('#filter').selectOption('all');assert.equal(await host.locator('.game-card').filter({hasText:state.game.name}).count(),1);
  await host.locator('.game-card').filter({hasText:state.lobby.name}).getByRole('link',{name:'Open console'}).click();
  await host.locator('#game-code').filter({hasText:state.lobby.joinCode}).waitFor();
- await host.locator('#access-panel > summary').click();assert.equal(await host.locator('#tvUrl').getAttribute('href'),base+'/tv/'+state.lobby.joinCode);
+ const hostNav=host.getByRole('navigation',{name:'Host sections'});
+ await hostNav.getByRole('link',{name:'TV & guest links'}).click();await host.waitForURL('**#sharing');
+ assert.equal(await host.locator('#tvUrl').getAttribute('href'),base+'/tv/'+state.lobby.joinCode);
+ assert.equal(await host.locator('#guest-url').inputValue(),base+'/g/'+state.lobby.joinCode);
  assert.ok((await host.locator('#tvQr').getAttribute('src')).endsWith('/tv-qr.svg'));
- await host.locator('#players-panel > summary').click();await host.waitForFunction(()=>!document.querySelector('#players-panel').open&&localStorage.getItem('tambola-panel-players-panel')==='closed');
- await host.reload();assert.equal(await host.locator('#players-panel').getAttribute('open'),null);await host.locator('#players-panel > summary').click();
+ await hostNav.getByRole('link',{name:'Players & tickets'}).click();await host.waitForURL('**#players');
+ assert.equal(await host.locator('#round').isVisible(),false);
+ assert.equal(await host.evaluate(()=>document.activeElement.textContent),'Players & tickets');
+ await host.goBack();await host.waitForURL('**#sharing');await host.locator('#access-panel').waitFor();
+ await host.goForward();await host.waitForURL('**#players');
+ await host.reload();await host.locator('#players-panel').waitFor();assert.equal(await hostNav.locator('[aria-current=page]').getAttribute('href'),'#players');
  const guestContext=await browser.newContext({viewport:{width:390,height:844}}),guest=await guestContext.newPage();guest.on('pageerror',e=>errors.push(e.message));
  await guest.goto(base+'/g/'+state.lobby.joinCode);await guest.locator('#name').fill('Festival Guest');await guest.locator('#register-button').click();
  await guest.locator('#ticket-section').waitFor({state:'visible'});assert.equal(await guest.locator('input[type=tel]').count(),0);
+ assert.equal(await guest.locator('header #welcome').textContent(),'Festival Guest');
  assert.equal(await guest.locator('#regenerate').isVisible(),true);assert.equal(await guest.locator('#submit').isDisabled(),true);
  const first=await guest.locator('#ticket-code').textContent();await guest.locator('#regenerate').click();await guest.waitForFunction(old=>document.querySelector('#ticket-code').textContent!==old,first);
  const recoveryCode=await guest.locator('#recovery-code').textContent();assert.match(recoveryCode,/^[a-f0-9]{32}$/);
@@ -64,10 +72,17 @@ export async function browserChecks({browser,base,key,state,outputDir}){
   await state.request(lobbyRoot+'/admin/players/'+person.player.id+'/approve',{method:'POST',admin:true});
  }
  await host.screenshot({path:outputDir+'/admin-console.png',fullPage:true});
- await host.locator('#switch-game').selectOption(state.game.id);await host.waitForURL('**/admin/'+state.game.id);await host.waitForFunction(()=>document.querySelector('#status').textContent==='STOPPED');
+ await host.locator('#switch-game').selectOption(state.game.id);await host.waitForURL('**/admin/'+state.game.id);await host.waitForFunction(()=>document.querySelector('#status').textContent==='Stopped');
  await host.locator('#switch-game').selectOption(state.lobby.id);await host.waitForURL('**/admin/'+state.lobby.id);
  await state.request('/games/'+state.lobby.id+'/start',{method:'POST',admin:true});
  for(const number of [4,9,14,21,26,31,38,45,49,54,61,66,72,77,81,88])await state.request('/games/'+state.lobby.id+'/calls/manual',{method:'POST',admin:true,body:{number}});
+ await recovered.waitForFunction(()=>document.querySelector('#player-latest').textContent==='88');
+ await recovered.getByRole('link',{name:'Calls',exact:true}).click();assert.equal(await recovered.locator('#callHistory li').count(),16);
+ const playerRefresh=recovered.waitForResponse(response=>response.url().endsWith('/players/me/power')&&response.ok());
+ await recovered.evaluate(()=>window.dispatchEvent(new Event('tambola:changed')));await playerRefresh;
+ assert.equal(await recovered.locator('#ticket-section').isVisible(),false);
+ await recovered.getByRole('link',{name:'My ticket',exact:true}).click();assert.equal(await recovered.locator('#ticket .cell').count(),27);
+ await recovered.screenshot({path:outputDir+'/player-live-phone.png'});
  const tv=await hostContext.newPage();tv.on('pageerror',e=>errors.push(e.message));
  for(const [width,height] of [[960,540],[1024,600],[1280,720],[1366,768],[1920,1080],[2560,1440],[3840,2160]]){
   await tv.setViewportSize({width,height});await tv.goto(base+'/tv/'+state.lobby.joinCode);await tv.waitForFunction(()=>document.querySelectorAll('.ball').length===90&&document.querySelector('#count').textContent==='16');
@@ -83,5 +98,24 @@ export async function browserChecks({browser,base,key,state,outputDir}){
   if([960,1280,1920,3840].includes(width))await tv.screenshot({path:outputDir+'/tv-'+width+'.png'});
  }
  await host.setViewportSize({width:390,height:844});await host.reload();await host.waitForFunction(()=>document.querySelector('#name').textContent!=='Loading game…');assert.ok(await host.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await host.screenshot({path:outputDir+'/admin-phone.png',fullPage:true});
+ await host.setViewportSize({width:1440,height:900});await host.screenshot({path:outputDir+'/host-live-desktop.png'});
+ for(const width of [320,390,768,1440]){
+  await host.setViewportSize({width,height:844});await recovered.setViewportSize({width,height:844});
+  for(const section of ['round','players','prizes','sharing','style','activity']){
+   if(width<=760)await host.getByRole('combobox',{name:'Host section'}).selectOption(section);
+   else await hostNav.locator('[data-view-link='+section+']').click();
+   if(section==='style'&&width===320){
+    await host.locator('#appearance-panel > summary').click();
+    await host.locator('#commentary-panel > summary').click();
+   }
+   assert.equal(await host.locator('[data-view]:visible').count(),1);
+   assert.ok(await host.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),width+'px host '+section);
+  }
+  for(const section of ['ticket','calls','prizes']){
+   await recovered.locator('#player-nav [data-view-link='+section+']').click();
+   assert.equal(await recovered.locator('[data-view]:visible').count(),1);
+   assert.ok(await recovered.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),width+'px guest '+section);
+  }
+ }
  assert.deepEqual(errors,[]); // The caller owns browser teardown (including all contexts).
 }

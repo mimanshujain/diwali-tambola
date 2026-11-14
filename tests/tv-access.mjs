@@ -83,13 +83,15 @@ test('TV display and guest QR fall back to the LAN origin when unconfigured', as
 
 test('short TV URL joins the UUID socket room', () => {
   for (const route of ['/tv/' + code, '/tv/' + id, '/admin/' + id, '/join/' + id]) {
-    const handlers = {}, emitted = [];
+    const handlers = {}, emitted = [], indicators = [];
+    const append = node => indicators.push(node);
     vm.runInNewContext(LIVE_CLIENT_JS, {
       location: { pathname: route },
       document: {
-        querySelector: () => ({ dataset: { gameId: id } }),
+        querySelector: selector => selector==='[data-game-id]'?{dataset:{gameId:id}}:
+          selector==='[data-live-status]'&&!route.startsWith('/tv/')?{append}:null,
         createElement: () => ({ style: {}, setAttribute() {} }),
-        body: { append() {} }, addEventListener() {},
+        body: { append }, addEventListener() {},
       },
       window: { addEventListener() {} },
       io: () => ({ on: (name, handler) => { handlers[name] = handler; }, emit: (...args) => emitted.push(args) }),
@@ -97,6 +99,8 @@ test('short TV URL joins the UUID socket room', () => {
     handlers.connect();
     assert.equal(emitted[0][0], 'game:join');
     assert.equal(emitted[0][1].gameId, id);
+    assert.equal(indicators.length,1);
+    assert.equal(indicators[0].className,route.startsWith('/tv/')?undefined:'live-indicator');
   }
 });
 
