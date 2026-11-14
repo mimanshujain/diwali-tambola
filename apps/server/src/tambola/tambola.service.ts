@@ -1,4 +1,4 @@
-import { THEMES, resolveTheme } from '../display/appearance.js';
+import { THEMES, parseThemeLayers, resolveTheme } from '../display/appearance-catalog.js';
 import { hostId } from '../hosting/context.js';
 import {
   BadRequestException,
@@ -23,6 +23,7 @@ interface GameRow extends QueryResultRow {
   name: string;
   theme_id: string;
   theme_version: number;
+  theme_layers: unknown;
   welcome_message: string;
   status: GameStatus;
   interval_seconds: number;
@@ -45,6 +46,7 @@ interface CreateGameInput {
   name?: unknown;
   intervalSeconds?: unknown;
   themeId?: unknown;
+  themeLayers?: unknown;
   welcomeMessage?: unknown;
 }
 
@@ -87,9 +89,9 @@ export class TambolaService {
             if(limits.active>=5 || limits.total>=100)throw new ConflictException('Host limit reached: 5 active games or 100 saved games. End an active game or contact the service owner.');
           }
           await client.query(
-            `INSERT INTO games (id, name, interval_seconds, remaining_numbers, join_code, host_id, theme_id, welcome_message)
-             VALUES ($1::uuid, $2, $3, $4::smallint[], $5, $6, $7, $8)`,
-            [id, name, intervalSeconds, remainingNumbers, generateJoinCode(), owner, appearance.themeId, appearance.welcomeMessage],
+            `INSERT INTO games (id, name, interval_seconds, remaining_numbers, join_code, host_id, theme_id, welcome_message, theme_layers)
+             VALUES ($1::uuid, $2, $3, $4::smallint[], $5, $6, $7, $8, $9::jsonb)`,
+            [id, name, intervalSeconds, remainingNumbers, generateJoinCode(), owner, appearance.themeId, appearance.welcomeMessage, JSON.stringify(appearance.themeLayers)],
           );
           await client.query(`INSERT INTO winning_categories(id,game_id,rule_type,name)
             SELECT gen_random_uuid(),$1,rule_type,name FROM (VALUES
@@ -109,22 +111,31 @@ export class TambolaService {
     return this.getGame(id);
   }
 
-  private validateAppearance(input:{name?:unknown;themeId?:unknown;welcomeMessage?:unknown}) {
+  private validateAppearance(input:{name?:unknown;themeId?:unknown;themeLayers?:unknown;welcomeMessage?:unknown}) {
     const name=typeof input.name==='string'?input.name.trim():'';
     const themeId=input.themeId===undefined?'classic':input.themeId;
     const welcomeMessage=input.welcomeMessage===undefined?'':input.welcomeMessage;
     if(!name || name.length>100)throw new BadRequestException('Event name must contain 1–100 characters.');
     if(!THEMES.some(t=>t.id===themeId))throw new BadRequestException('Choose an available theme.');
     if(typeof welcomeMessage!=='string' || welcomeMessage.length>240)throw new BadRequestException('Welcome message must be at most 240 characters.');
-    return {name,themeId,welcomeMessage:welcomeMessage.trim()};
+    const themeLayers = parseThemeLayers(input.themeLayers);
+    if (!themeLayers) throw new BadRequestException('Choose valid theme layers and use six-digit hex colors.');
+    return {name,themeId,themeLayers,welcomeMessage:welcomeMessage.trim()};
   }
 
-  async updateAppearance(id:string,input:{name?:unknown;themeId?:unknown;welcomeMessage?:unknown;confirmLive?:unknown}) {
+  async updateAppearance(id:string,input:{name?:unknown;themeId?:unknown;themeLayers?:unknown;welcomeMessage?:unknown;confirmLive?:unknown}) {
     this.assertUuid(id);const appearance=this.validateAppearance(input);
     await this.database.transaction(async client=>{
       const game=await this.lockGame(client,id);
       if((game.status==='RUNNING'||game.status==='PAUSED')&&input.confirmLive!==true)throw new ConflictException('Confirm appearance changes during active play.');
-      await client.query('UPDATE games SET name=$2,theme_id=$3,theme_version=1,welcome_message=$4 WHERE id=$1',[id,appearance.name,appearance.themeId,appearance.welcomeMessage]);
+      // Older clients omit layers. Preserve them when editing the same preset.
+      const layers = input.themeLayers === undefined && game.theme_version === 1 && game.theme_id === appearance.themeId
+        ? parseThemeLayers(game.theme_layers) ?? {}
+        : appearance.themeLayers;
+      await client.query(
+        'UPDATE games SET name=$2,theme_id=$3,theme_version=1,welcome_message=$4,theme_layers=$5::jsonb WHERE id=$1',
+        [id,appearance.name,appearance.themeId,appearance.welcomeMessage,JSON.stringify(layers)],
+      );
     });
     return this.getGame(id);
   }
@@ -228,7 +239,7 @@ export class TambolaService {
   async getGame(gameId: string): Promise<Record<string, unknown>> {
     this.assertUuid(gameId);
     const result = await this.database.query<GameRow & { remaining_count: number }>(
-      `SELECT id, join_code, name, theme_id, theme_version, welcome_message, status, interval_seconds, next_number_sequence,
+      `SELECT id, join_code, name, theme_id, theme_version, theme_layers, welcome_message, status, interval_seconds, next_number_sequence,
               next_ticket_number, next_call_at, paused_remaining_seconds,
               created_at, started_at, completed_at, emergency_stopped, ended_by_admin, recovered_at,
               cardinality(remaining_numbers)::integer AS remaining_count
@@ -239,12 +250,14 @@ export class TambolaService {
     if (!game) throw new NotFoundException('Game not found.');
 
     const calledCount = game.next_number_sequence - 1;
+    const theme = resolveTheme(game.theme_id, game.theme_version);
     return {
       id: game.id,
       joinCode: game.join_code,
       name: game.name,
-      themeId: resolveTheme(game.theme_id,game.theme_version).id,
+      themeId: theme.id,
       themeVersion: game.theme_version,
+      themeLayers: theme.id === game.theme_id && game.theme_version === 1 ? parseThemeLayers(game.theme_layers) ?? {} : {},
       welcomeMessage: game.welcome_message,
       status: game.status,
       intervalSeconds: game.interval_seconds,

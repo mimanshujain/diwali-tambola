@@ -1,4 +1,4 @@
-# Diwali Tambola
+# Tambola
 
 Want to let other organizers host without a Raspberry Pi? Read the [hosted implementation and environment guide](docs/HOSTED_IMPLEMENTATION.md) to understand how host accounts, guest links and TV pairing work. Use the [hosted pilot runbook](docs/HOSTED_PILOT.md) to deploy on Render. The Raspberry Pi setup below uses LAN mode by default.
 
@@ -32,6 +32,7 @@ Before hosting, replace the example `ADMIN_TOKEN` in `.env` with a private rando
 
 ## Documentation
 
+- [Occasion presets, custom colors and print previews](docs/OCCASION_THEMES.md)
 - [Party console, recovery, prizes, printing and deployment](docs/PARTY_UPGRADE.md)
 - [Getting started](docs/GETTING_STARTED.md)
 - [Gameplay and rules](docs/GAME_RULES.md)

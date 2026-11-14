@@ -7,13 +7,13 @@ export class GamesController {
   constructor(private readonly tambola: TambolaService) {}
 
   @Post()
-  createGame(@Body() body: { name?: unknown; intervalSeconds?: unknown; themeId?: unknown; welcomeMessage?: unknown }, @Headers('x-admin-key') key?: string) {
+  createGame(@Body() body: { name?: unknown; intervalSeconds?: unknown; themeId?: unknown; themeLayers?: unknown; welcomeMessage?: unknown }, @Headers('x-admin-key') key?: string) {
     assertAdmin(key);
     return this.tambola.createGame(body ?? {});
   }
 
   @Post(':gameId/admin/appearance')
-  appearance(@Param('gameId') id:string,@Headers('x-admin-key') key:string|undefined,@Body() body:{name?:unknown;themeId?:unknown;welcomeMessage?:unknown;confirmLive?:unknown}) {assertAdmin(key);return this.tambola.updateAppearance(id,body??{});}
+  appearance(@Param('gameId') id:string,@Headers('x-admin-key') key:string|undefined,@Body() body:{name?:unknown;themeId?:unknown;themeLayers?:unknown;welcomeMessage?:unknown;confirmLive?:unknown}) {assertAdmin(key);return this.tambola.updateAppearance(id,body??{});}
 
   @Get()
   listGames(@Headers('x-admin-key') key?:string) { assertAdmin(key);return this.tambola.listGames(); }

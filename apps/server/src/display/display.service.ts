@@ -70,7 +70,7 @@ export class DisplayService {
     ]);
     return {
       game: {
-        id: game.id, name: game.name, status: game.status, themeId:game.themeId, themeVersion:game.themeVersion, welcomeMessage:game.welcomeMessage,
+        id: game.id, name: game.name, status: game.status, themeId:game.themeId, themeVersion:game.themeVersion, themeLayers:game.themeLayers, welcomeMessage:game.welcomeMessage,
         nextCallAt: game.nextCallAt, emergencyStopped: game.emergencyStopped, endedByAdmin: game.endedByAdmin,
       },
       calls: calls.map(call => ({number: call.number, sequence: call.sequence})), serverTime:new Date().toISOString(),

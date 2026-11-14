@@ -1,3 +1,4 @@
+import { THEME_LAYERS_MIGRATION } from './migrations/013_theme_layers.js';
 import { COMMENTARY_MIGRATION } from './migrations/012_commentary.js';
 import { GAME_APPEARANCE_MIGRATION } from './migrations/011_game_appearance.js';
 import { cloudMode } from '../hosting/context.js';
@@ -194,6 +195,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       if (!commentary.rowCount) {
         await client.query(COMMENTARY_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['012_commentary']);
+      }
+      const themeLayers = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['013_theme_layers']);
+      if (!themeLayers.rowCount) {
+        await client.query(THEME_LAYERS_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['013_theme_layers']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');

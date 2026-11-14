@@ -2,10 +2,10 @@
 export function renderJoinPage(): string {
   return String.raw`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Diwali Tambola • Join</title>
+<title>Tambola · Join</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;background:#101621;color:#f5f5f5;padding:24px}main{max-width:520px;margin:0 auto}h1{color:#f7bc55}form,section{background:#1b2637;border:1px solid #405066;padding:20px;border-radius:14px;margin:16px 0}input,button{font:inherit;width:100%;padding:12px;border-radius:9px;margin:7px 0}input{border:1px solid #8393ab;background:#fff;color:#111}button{border:0;background:#e7a83d;color:#111;font-weight:bold;cursor:pointer}button:disabled{opacity:.5}button.secondary{background:#8296b3}#message{min-height:20px;color:#ffbeae}.ticket{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;margin:20px 0}.cell{aspect-ratio:1;display:grid;place-items:center;background:#eef0f5;color:#151a24;font-weight:700;border-radius:4px;font-size:clamp(12px,3.7vw,20px)}.cell.empty{background:#3d4a60}small{color:#bec9d7}
-</style></head><body><main><h1>🪔 Diwali Tambola</h1><p>Join the game and get your own ticket.</p>
+</style></head><body><main><h1>Tambola</h1><p>Join the game and get your own ticket.</p>
 <div id="message" role="status"></div>
 <form id="register"><label>Name<input id="name" autocomplete="name" maxlength="80" required></label><label>Mobile number (with country code)<input id="mobile" type="tel" autocomplete="tel" placeholder="e.g. 15551234567" required></label><button>Get my ticket</button><small>One registration per mobile number and browser. Mobile numbers aren't SMS-verified.</small></form>
 <section id="ticket-section" hidden><h2 id="welcome"></h2><p id="ticket-code"></p><div class="ticket" id="ticket"></div><p id="status"></p><button id="submit">Submit ticket</button><button id="regenerate" class="secondary">Try another ticket</button><small>Submit locks your ticket. Keep this browser's storage intact to return later.</small></section>
