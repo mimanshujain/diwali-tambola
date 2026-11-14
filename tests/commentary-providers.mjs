@@ -37,7 +37,7 @@ test('Gemini writes a grounded Hindi reaction without sending player names',asyn
 test('Gemini audience settings share the fallback and keep provider safety filters on',async t=>{
  let body;
  const responses=[answer('This is a kiss of luck!'),answer('This is a kiss of luck!'),answer('Explicit porn details'),answer('One to go! १')];
- mockProvider(t,{GEMINI_API_KEY:'test-only-key',GEMINI_MODEL:'gemini-2.5-flash-lite'},async(url,options)=>{
+ mockProvider(t,{GEMINI_API_KEY:'test-only-key',GEMINI_MODEL:'gemini-3.5-flash-lite'},async(url,options)=>{
   assert.match(url,/gemini-2\.5-flash-lite:generateContent$/);
   body=JSON.parse(options.body);return responses.shift();
  });
@@ -65,11 +65,11 @@ test('Gemini errors are actionable without exposing provider response text',asyn
   [Response.json({candidates:[]}),'empty'],
  ];
  const responses=cases.map(([response])=>response);
- mockProvider(t,{GEMINI_API_KEY:'test-only-key',GEMINI_MODEL:'gemini-2.5-flash-lite'},async()=>responses.shift());
+ mockProvider(t,{GEMINI_API_KEY:'test-only-key',GEMINI_MODEL:'gemini-3.5-flash-lite'},async()=>responses.shift());
  const service=new CommentaryService({}),settings=parseSettings({});
  for(const [,status,httpStatus] of cases){
   const line=await service.compose(fact,settings);
-  assert.deepEqual(line.gemini,{status,httpStatus,model:'gemini-2.5-flash-lite'});
+  assert.deepEqual(line.gemini,{status,httpStatus,model:'gemini-3.5-flash-lite'});
   assert.equal(line.reaction,null);assert.ok(!JSON.stringify(line).includes('test-only-key'));
  }
 });
