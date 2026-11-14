@@ -80,15 +80,13 @@ export const workspaceCss = String.raw`
 .host-switch { display: flex; align-items: center; gap: 8px; margin: 0; min-width: 0; }
 .host-switch select { width: clamp(110px, 20vw, 280px); min-height: 36px; margin: 0; text-overflow: ellipsis; }
 .host-switch span { white-space: nowrap; }
-.host-key { position: relative; }
-.host-key > summary { padding: 6px 10px; min-height: 36px; border: 1px solid var(--soft-line); border-radius: var(--occasion-control-radius); font-size: 12px; }
-.host-key > summary:after { font-size: 15px; }
-.host-key-body {
-  position: absolute; right: 0; top: calc(100% + 10px); width: min(300px, calc(100vw - 22px));
-  padding: 14px; background: var(--surface); border: 1px solid var(--soft-line);
-  border-radius: var(--occasion-panel-radius); box-shadow: 0 12px 32px #0006;
+.host-key-form {
+  grid-column: 1 / -1; justify-self: end; width: min(100%, 400px);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px;
+  padding-bottom: 5px;
 }
-.host-key-body p { margin: 9px 0 0; }
+.workspace .host-key-form label { margin: 0; }
+.workspace .host-key-form input { margin-top: 3px; min-height: 36px; }
 .workspace .live-indicator {
   display: inline-flex; gap: 6px; align-items: center; white-space: nowrap;
   color: var(--muted); font-size: 11px;

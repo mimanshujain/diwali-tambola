@@ -46,13 +46,13 @@ function hostHeader(game: boolean): string {
   <a class="workspace-brand" href="/admin" aria-label="Tambola host desk, all games"><span class="brand-mark" aria-hidden="true">✦</span><span><span class="brand">TAMBOLA</span><small>${game?'← All games':'Host desk'}</small></span></a>
   ${game?'<label class="host-switch"><span>Switch game</span><select id="switch-game" aria-label="Switch game" disabled><option>Loading…</option></select></label>':''}
   <div class="workspace-header-actions">
-   ${cloudMode()?hostAccount():`<details class="host-key" id="host-key"><summary>Admin key</summary><div class="host-key-body">
-    <label>Admin key<input id="key" type="password" autocomplete="off" placeholder="Your private host key"></label>
-    <button id="load" type="button" class="header-action">Unlock ${game?'controls':'games'}</button>
-    <p class="small">Use the admin key for this local server.</p>
-   </div></details>`}
+   ${cloudMode()?hostAccount():'<button type="button" id="host-key-toggle" class="ghost header-action" aria-controls="host-key-form" aria-expanded="false">Admin key</button>'}
   </div>
   ${game?`<div class="host-mobile-switch"><label>Section<select id="section-picker" aria-label="Host section">${gameViews.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label></div>`:''}
+  ${cloudMode()?'':`<form class="host-key-form" id="host-key-form" hidden>
+   <label>Local admin key<input id="key" type="password" autocomplete="off" placeholder="Your private host key" required></label>
+   <button id="load" type="submit" class="header-action">Unlock ${game?'controls':'games'}</button>
+  </form>`}
  </div>
 </header>`;
 }
@@ -68,19 +68,16 @@ const helpers=String.raw`
 const $=s=>document.querySelector(s);
 const hosted=Boolean($('#host-account'));
 const keyBox=$('#key');keyBox.value=hosted?'':sessionStorage.getItem('tambola-admin-key')||'';
+const keyForm=$('#host-key-form'),keyToggle=$('#host-key-toggle');
 if(hosted){
  const signOut=$('#sign-out');
  signOut.onclick=()=>run(signOut,async()=>{await request('/auth/logout','POST');location.replace('/');});
  try{sessionStorage.removeItem('tambola-admin-key');}catch{}
 }else{
- const hostKey=$('#host-key');
- hostKey.open=!keyBox.value;
- keyBox.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('#load').click();}});
- document.addEventListener('click',event=>{
-  if(hostKey.open&&!hostKey.contains(event.target))hostKey.open=false;
- });
- document.addEventListener('keydown',event=>{
-  if(event.key==='Escape'&&hostKey.open){hostKey.open=false;hostKey.querySelector('summary').focus();}
+ setKeyFormOpen(!keyBox.value);
+ keyToggle.onclick=()=>{setKeyFormOpen(keyForm.hidden);if(!keyForm.hidden)keyBox.focus();};
+ keyToggle.closest('header').addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&!keyForm.hidden)setKeyFormOpen(false);
  });
 }
 keyBox.oninput=()=>sessionStorage.setItem('tambola-admin-key',keyBox.value);
@@ -104,7 +101,17 @@ async function deleteGame(game){
  await request('/games/'+encodeURIComponent(game.id)+'/admin/game','DELETE',{confirmationCode});return true;
 }
 function empty(container,message){container.replaceChildren(el('div',message,'empty'));}
-function accessReady(){if(!hosted){const key=$('#host-key');if(key.contains(document.activeElement))key.querySelector('summary').focus();key.open=false;}}
+function setKeyFormOpen(open){
+ if(!keyForm)return;
+ if(!open&&keyForm.contains(document.activeElement))keyToggle.focus();
+ keyForm.hidden=!open;
+ keyToggle.setAttribute('aria-expanded',String(open));
+}
+function bindHostLoad(action){
+ const load=$('#load');
+ if(hosted)load.onclick=()=>run(load,action);
+ else keyForm.onsubmit=event=>{event.preventDefault();void run(load,action);};
+}
 function displayStatus(status,stopped){return stopped?'Stopped':({CREATED:'Lobby',RUNNING:'In play',PAUSED:'Paused',COMPLETED:'Completed'})[status]||status;}
 function updateBadge(node,status,stopped){node.textContent=displayStatus(status,stopped);node.dataset.state=stopped?'stopped':status.toLowerCase();}
 `;
@@ -145,7 +152,7 @@ function render(){
  if(!visible.length)empty(list,games.length?'No games match your search and filter.':'Create a game to get the lobby and guest link.');
 }
 async function load(){if(!hosted&&!keyBox.value)return;const next=await request('/games');if(JSON.stringify(next)!==JSON.stringify(games)){games=next;render();}}
-$('#load').onclick=()=>run($('#load'),async()=>{if(!hosted&&!keyBox.value){keyBox.focus();return;}await load();accessReady();});$('#filter').onchange=render;$('#search').oninput=render;
+bindHostLoad(async()=>{await load();setKeyFormOpen(false);say('');});$('#filter').onchange=render;$('#search').oninput=render;
 $('#create-form').onsubmit=e=>{e.preventDefault();run($('#create'),async()=>{const game=await request('/games','POST',{...appearancePayload(),intervalSeconds:Number($('#interval').value)});location.href='/admin/'+game.id;});};
 fetch('/health/ready',{cache:'no-store'}).then(r=>{$('#health').textContent=r.ok?'● Server ready':'Server needs attention';}).catch(()=>$('#health').textContent='Server unavailable');
 load().catch(error=>say(error.message));setInterval(()=>load().catch(error=>say(error.message)),15000);
@@ -369,7 +376,7 @@ async function loadGames(){
  select.disabled=!games.length;
 }
 $('#switch-game').onchange=()=>location.href='/admin/'+encodeURIComponent($('#switch-game').value);
-$('#load').onclick=()=>run($('#load'),async()=>{if(!hosted&&!keyBox.value){keyBox.focus();return;}await loadGames();accessReady();say('');await loadCommentary();await refresh();});$('#player-search').oninput=renderPlayers;
+bindHostLoad(async()=>{await loadGames();setKeyFormOpen(false);say('');await loadCommentary();await refresh();});$('#player-search').oninput=renderPlayers;
 $('#copy-guest-link').onclick=()=>run($('#copy-guest-link'),async()=>{
  const field=$('#guest-url');
  try{await navigator.clipboard.writeText(field.value);say('Guest link copied.');}

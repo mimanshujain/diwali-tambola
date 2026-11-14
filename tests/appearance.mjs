@@ -4,9 +4,16 @@ export async function appearanceChecks({browser,base,key,db,outputDir,stop,start
  const headers={'content-type':'application/json','x-admin-key':key};
  async function request(path,body,status=201){const r=await fetch(base+path,{method:body?'POST':'GET',headers,body:body?JSON.stringify(body):undefined});assert.equal(r.status,body?status:200,await r.clone().text());return r.json();}
  const context=await browser.newContext({viewport:{width:390,height:844}}),host=await context.newPage(),errors=[];host.on('pageerror',e=>errors.push(e.message));
- await host.goto(base+'/admin');await host.locator('#key').fill(key);
+ await host.goto(base+'/admin');
  assert.equal(await host.title(),'Tambola · Host desk');
+ const adminKey=host.locator('#key'),keyToggle=host.getByRole('button',{name:'Admin key',exact:true});
+ assert.equal(await keyToggle.getAttribute('aria-expanded'),'true');
+ assert.ok(await adminKey.isVisible());
  await host.getByRole('link',{name:/New game/}).click();
+ await host.waitForURL('**#create');
+ await adminKey.fill(key);await adminKey.press('Enter');await adminKey.waitFor({state:'hidden'});
+ assert.equal(await keyToggle.getAttribute('aria-expanded'),'false');
+ assert.ok(await host.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  assert.equal(await host.locator('#appearance-name').inputValue(),'Tambola');
  await host.locator('#appearance-name').fill('Advay’s birthday');await host.locator('[data-theme-choice=birthday]').click();await host.locator('#appearance-welcome').fill('Welcome, friends!');
  await host.locator('#appearance-palette').selectOption('midnight');
