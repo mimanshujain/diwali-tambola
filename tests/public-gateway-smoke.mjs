@@ -31,6 +31,13 @@ if (!/^[0-9a-f-]{36}$/i.test(id??'') || !/^[A-HJ-NP-Z2-9]{6}$/.test(code??'')) {
 }
 expectStatus('Guest short URL',await request(edge,'/g/'+code),[302]);
 expectStatus('Guest registration page',await request(edge,'/join/'+id),[200]);
+for (const path of ['/practice','/how-to-play']) {
+  const tutorial = await request(edge,path);
+  expectStatus('Public tutorial '+path,tutorial,[200]);
+  if (/href="\/(admin|host)\b/.test(tutorial.raw)) throw new Error('Guest tutorial links to a private host route');
+  expectStatus('Tutorial write rejected '+path,await request(edge,path,{method:'POST',body:{}}),[403,405]);
+}
+
 expectStatus('Guest live script',await request(edge,'/live/client.js'),[200]);
 expectStatus('Socket.IO client bundle',await request(edge,'/socket.io/socket.io.js'),[200]);
 const display = await request(edge,'/games/'+id+'/guest-display');

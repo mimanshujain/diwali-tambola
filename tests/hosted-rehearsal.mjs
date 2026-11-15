@@ -23,7 +23,7 @@ const pgPort=await freePort(),apiPort=await freePort(),port2=await freePort(),tl
 const output=await mkdtemp(join(tmpdir(),'tambola-hosted-')),origin='https://localhost:'+tlsPort;
 const pg=new EmbeddedPostgres({databaseDir:join(output,'pg'),port:pgPort,user:'postgres',password:'test-only',persistent:false,autoRehydrateSymlinks:true,postgresFlags:['-k','','-h','127.0.0.1'],onLog:()=>{},onError:console.error});
 const database=`postgresql://postgres:test-only@127.0.0.1:${pgPort}/tambola`;
-const env={...process.env,HOSTING_MODE:'cloud',DATABASE_URL:database,PUBLIC_APP_ORIGIN:origin,GOOGLE_CLIENT_ID:'test-google-client',GOOGLE_CLIENT_SECRET:'test-only',HOST_ALLOWED_EMAILS:'alice@example.com,bob@example.com,charlie@example.com',ADMIN_TOKEN:'old-admin-token-must-not-work',GEMINI_API_KEY:'gemini-rehearsal-key',GEMINI_MODEL:'',ELEVENLABS_API_KEY:'elevenlabs-rehearsal-key',COMMENTARY_ELEVEN_VOICE_HI_IN:'voice-hi',COMMENTARY_VOICE_PROFILES:JSON.stringify([{id:'haryanvi',label:'Hindi · Haryanvi',language:'hi',dialect:'haryanvi',voiceId:'voice-haryanvi'}])};
+const env={...process.env,HOSTING_MODE:'cloud',HOST_ACCESS_REQUEST_URL:'https://example.com/tambola-hosts?campaign=pilot&source=site',DATABASE_URL:database,PUBLIC_APP_ORIGIN:origin,GOOGLE_CLIENT_ID:'test-google-client',GOOGLE_CLIENT_SECRET:'test-only',HOST_ALLOWED_EMAILS:'alice@example.com,bob@example.com,charlie@example.com',ADMIN_TOKEN:'old-admin-token-must-not-work',GEMINI_API_KEY:'gemini-rehearsal-key',GEMINI_MODEL:'',ELEVENLABS_API_KEY:'elevenlabs-rehearsal-key',COMMENTARY_ELEVEN_VOICE_HI_IN:'voice-hi',COMMENTARY_VOICE_PROFILES:JSON.stringify([{id:'haryanvi',label:'Hindi · Haryanvi',language:'hi',dialect:'haryanvi',voiceId:'voice-haryanvi'}])};
 let db,browser,proxy,currentPort=apiPort;const children=[],logs=[];
 const hash=value=>createHash('sha256').update(value).digest('hex');
 async function start(port){const child=spawn(process.execPath,['--import','./tests/fixtures/google-provider.mjs','--import','./tests/fixtures/elevenlabs-provider.mjs','apps/server/dist/main.js'],{cwd:root,env:{...env,PORT:String(port)},stdio:['ignore','pipe','pipe']});children.push(child);child.stdout.on('data',b=>logs.push(String(b)));child.stderr.on('data',b=>logs.push(String(b)));for(let i=0;i<150;i++){if(child.exitCode!==null)throw Error(logs.join('').slice(-3000));try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)return child;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Startup timeout');}
@@ -48,6 +48,11 @@ async function login(email,extras={},expected=302){
 }
 try{
  await pg.initialise();await pg.start();await pg.createDatabase('tambola');db=new Pool({connectionString:database});let a=await start(apiPort);
+ for (const path of ['/practice','/how-to-play','/host']) {
+  await api(path);
+  await api(path,{method:'POST',body:{},expected:401});
+ }
+ assert.match((await api('/screen')).data,/six-character game code is for guests/);
  await api('/admin',{expected:302});await api('/games',{headers:{'x-admin-key':env.ADMIN_TOKEN},expected:401});
  await api('/auth/callback?code=bad&state=bad',{expected:401});
  await login('intruder@example.com',{},401);await login('alice@example.com',{email_verified:false},401);await login('alice@example.com',{nonce:'wrong'},401);await login('alice@example.com',{aud:'another-client'},401);await login('alice@example.com',{iss:'https://evil.example'},401);await login('alice@example.com',{exp:1},401);
@@ -117,6 +122,44 @@ try{
  proxy.on('upgrade',(req,socket,head)=>{const upstream=socketConnect(currentPort,'127.0.0.1',()=>{upstream.write(req.method+' '+req.url+' HTTP/1.1\r\n'+Object.entries(req.headers).map(([k,v])=>k+': '+v).join('\r\n')+'\r\n\r\n');if(head.length)upstream.write(head);socket.pipe(upstream);upstream.pipe(socket);});upstream.on('error',()=>socket.destroy());socket.on('error',()=>upstream.destroy());});
  proxy.listen(tlsPort,'127.0.0.1');await once(proxy,'listening');
  browser=await playwright.launch({executablePath:process.env.TAMBOLA_CHROMIUM_PATH||await chromium.executablePath(),headless:true,args:chromium?chromium.args.filter(a=>!['--disable-web-security','--allow-running-insecure-content','--single-process'].includes(a)):['--no-sandbox','--disable-dev-shm-usage']});
+ const learner=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:360,height:800}});
+ const lesson=await learner.newPage(),lessonErrors=[];
+ lesson.on('pageerror',error=>lessonErrors.push(error.message));
+ await lesson.goto(origin+'/');
+ await lesson.getByRole('heading',{name:'Host Tambola on your TV.'}).waitFor();
+ assert.ok(await lesson.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await lesson.screenshot({path:join(output,'launch-phone.png'),fullPage:true});
+ await lesson.setViewportSize({width:1440,height:900});
+ await lesson.screenshot({path:join(output,'launch-desktop.png'),fullPage:true});
+ await lesson.setViewportSize({width:360,height:800});
+ await lesson.getByRole('link',{name:'Request host access',exact:true}).click();
+ assert.equal(await lesson.getByRole('link',{name:'Request host access',exact:true}).getAttribute('href'),env.HOST_ACCESS_REQUEST_URL);
+ await lesson.goBack();
+ const lessonRequests=[];
+ lesson.on('request',request=>lessonRequests.push(request.url()));
+ await lesson.getByRole('link',{name:'Try a practice round',exact:true}).click();
+ const call=lesson.getByRole('button',{name:'Call next number'});
+ await call.click();
+ assert.match(await lesson.locator('#practice-status').textContent(),/65 is not on this ticket/);
+ for(let i=0;i<5;i++)await call.click();
+ assert.equal(await lesson.locator('#practice-ticket .matched').count(),5);
+ assert.equal(await lesson.locator('#practice-matches').textContent(),'5 / 5 matches');
+ await lesson.getByRole('button',{name:'Review the prize'}).click();
+ await lesson.getByRole('button',{name:'Confirm practice winner'}).click();
+ await lesson.getByRole('heading',{name:'You won Early Five'}).waitFor();
+ assert.ok(await lesson.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await lesson.screenshot({path:join(output,'practice-phone.png'),fullPage:true});
+ assert.ok(lessonRequests.every(url=>new URL(url).origin===origin&&!new URL(url).pathname.startsWith('/games')));
+ await lesson.getByRole('button',{name:'Restart practice'}).click();
+ assert.equal(await lesson.locator('#practice-ticket .matched').count(),0);
+ await lesson.goto(origin+'/how-to-play');
+ for(const [name,count] of [['Early Five',5],['Top Line',5],['Full House',15]]){
+  assert.equal(await lesson.getByRole('group',{name:name+' example ticket'}).locator('.matched').count(),count);
+ }
+ assert.ok(await lesson.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ assert.deepEqual(lessonErrors,[]);
+ await learner.close();
+ console.log('PASS public homepage, host invitation, practice round and illustrated rules in mobile and desktop browsers');
  const host=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844}});await host.addCookies([{name:'__Host-tambola-host',value:cookieToken,url:origin,secure:true,httpOnly:true,sameSite:'Lax'}]);
  const page=await host.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  // Identity and logout must be available without a second profile request.
@@ -131,7 +174,12 @@ try{
   assert.ok(signOut&&signOut.y>=0&&signOut.y+signOut.height<=844,'Sign out must be visible without scrolling');
  }
  await checkHostAccount('/admin');await page.waitForSelector('.game-card');assert.equal(await page.locator('.game-card').count(),1);assert.equal(await page.locator('#key').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(output,'host-phone.png'),fullPage:true});
- await page.goto(origin+'/admin/'+id);await page.getByRole('combobox',{name:'Host section'}).selectOption('style');await page.locator('#commentary-panel summary').click();
+ await page.goto(origin+'/admin/'+id);
+ await page.getByText('First game checklist',{exact:true}).waitFor();
+ await page.getByRole('link',{name:'Choose prizes',exact:true}).click();
+ await page.getByRole('heading',{name:'Prizes & claims',exact:true}).waitFor();
+ await page.getByRole('combobox',{name:'Host section'}).selectOption('style');
+ await page.locator('#commentary-panel summary').click();
  await page.locator('#commentary-language').selectOption('en');
  await page.locator('#commentary-test-number').fill('89');await page.locator('#commentary-generate').click();
  await page.waitForFunction(()=>document.querySelector('#commentary-preview-status').textContent.includes('Gemini Prepay credits are unavailable'));
@@ -225,6 +273,22 @@ try{
  console.log('PASS expressive Hindi preview, live cloud audio, TV fallback and provider rejection diagnostics');
  await page.getByText('Manage paired TVs',{exact:true}).click();page.once('dialog',d=>d.accept());await page.locator('#revoke-tv').click();await tv.waitForURL('**/screen');
  const guestContext=await browser.newContext({ignoreHTTPSErrors:true}),landing=await guestContext.newPage();await landing.goto(origin);await landing.locator('#code').fill(game.joinCode);await landing.locator('#join button').click();await landing.waitForURL('**/join/'+id);
+ await landing.getByText('How to play Tambola',{exact:true}).click();
+ await landing.getByRole('link',{name:'See winning tickets'}).waitFor();
+ const ended = await make(alice,'Onboarding test game');
+ await landing.goto(origin+'/g/'+ended.joinCode);
+ await landing.getByLabel('Your name').fill('New host');
+ await landing.locator('#register-button').click();
+ await landing.getByRole('heading',{name:'Your ticket'}).waitFor();
+ const hostAgain=landing.getByRole('link',{name:'Host your own game',exact:true});
+ assert.equal(await hostAgain.isVisible(),false);
+ await landing.getByRole('link',{name:'Prizes',exact:true}).click();
+ await landing.getByText('Match any five numbers anywhere on your ticket.',{exact:true}).waitFor();
+ await api('/games/'+ended.id+'/admin/end',{cookie:alice,method:'POST',expected:201});
+ await hostAgain.waitFor();
+ assert.equal(await hostAgain.getAttribute('href'),'/host');
+
+
  await page.goto(origin+'/admin');await page.getByRole('button',{name:'Sign out',exact:true}).click();await page.waitForURL(origin+'/');await api('/games',{cookie:alice,expected:401});assert.deepEqual(errors,[]);
  await browser.close();browser=null;
  console.log('PASS phone host desk, QR pairing, TV revocation, guest landing and logout in HTTPS browsers');

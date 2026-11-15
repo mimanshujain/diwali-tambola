@@ -163,6 +163,10 @@ export function adminPage(_gameId:string):string {
  const rules=Object.entries(RULE_LABELS).map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('');
  return html('Tambola · Game console',String.raw`
  <style>${workspaceCss}
+ .first-game-steps{display:grid;gap:.6rem 1.5rem;grid-template-columns:repeat(2,minmax(0,1fr));margin:0;padding-left:1.2rem}
+ .first-game-steps a,.first-game-steps strong{font-weight:750}
+ .first-game-steps span{display:block;color:var(--muted);font-size:.82rem}
+ @media(max-width:620px){.first-game-steps{grid-template-columns:minmax(0,1fr)}}
  .workspace .claim-banner{padding:11px 14px;border-color:#ba8960;background:var(--accent-tint)}
  .workspace .power-banner{border-color:#6ba992}.claim-banner strong{font-size:14px;overflow-wrap:anywhere}
  .claim-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;width:min(100%,460px);margin:8px 0;font-variant-numeric:tabular-nums}
@@ -183,6 +187,18 @@ export function adminPage(_gameId:string):string {
 
  <section id="round" data-view="round">
   <header class="section-intro"><h2 tabindex="-1" data-view-heading>Live round</h2><p class="section-note">Run the draw, check called numbers, or adjust the time between calls.</p></header>
+  <details id="first-game-guide" class="panel section-disclosure" hidden><summary>First game checklist</summary>
+   <div class="section-body stack">
+    <ol class="first-game-steps">
+     <li><a href="#prizes" data-view-link="prizes">Choose prizes</a><span>Start with Early Five, Top Line, and Full House.</span></li>
+     <li><a href="#sharing" data-view-link="sharing">Open the TV board and share the guest link</a><span>Turn on sound and scan the TV’s guest QR from a phone to test it.</span></li>
+     <li><a href="#players" data-view-link="players">Approve the players you recognize</a><span>Approved drafts submit when you start. Ask guests to keep their recovery codes private.</span></li>
+     <li><strong>Start the round and confirm the first prize</strong><span>Use Call next now to advance a draw. Review the highlighted matches when a claim appears.</span></li>
+    </ol>
+    <p class="section-note">Before guests arrive, try a separate test game with another phone or run through the <a href="/practice" target="_blank" rel="noopener">one-minute practice round</a>.</p>
+   </div>
+  </details>
+
   <div class="round-dashboard" id="controls">
    <section class="panel draw-hero" aria-label="Draw status"><div class="draw-stat"><span class="small">Latest call</span><strong id="latest" class="status-number">—</strong><span id="progress" class="small"></span></div><div class="draw-stat"><span id="timer-label" class="small">Next call in</span><strong id="timer" class="clock">—</strong></div></section>
    <section class="panel round-actions" aria-label="Round actions">
@@ -208,7 +224,7 @@ export function adminPage(_gameId:string):string {
  <section id="prizes" data-view="prizes" hidden>
   <header class="section-intro"><h2 tabindex="-1" data-view-heading>Prizes & claims</h2><p class="section-note">Set prizes before play, then review claims and tie-breaks as the round progresses.</p></header>
   <p id="auto-eligible" class="notice" role="status"></p>
-  <section id="claims-panel" class="panel stack"><div><h3>Claims & eligible tickets</h3><p class="section-note">Claims alert you for review. The earliest qualifying ticket can win automatically.</p></div><div id="claims" class="workspace-list"></div><div><h3>Qualified tickets</h3><div id="eligible" class="workspace-list"></div></div></section>
+  <section id="claims-panel" class="panel stack"><div><h3>Claims & eligible tickets</h3><p class="section-note">Tambola identifies the earliest qualifying tickets. Review a claim or resolve the prize to confirm the outcome.</p></div><div id="claims" class="workspace-list"></div><div><h3>Qualified tickets</h3><div id="eligible" class="workspace-list"></div></div></section>
   <div class="workspace-grid">
    <section id="prizes-panel" class="panel stack"><div class="surface-heading"><div><h3>Prize categories</h3><p class="section-note">Set the winning rule, prize and tie policy.</p></div><span id="categories-count" class="small"></span></div><div id="categories" class="workspace-list"></div>
     <details id="add-prize-panel" class="toolbar section-disclosure" hidden><summary>Add a prize</summary><form id="category-form" class="form-flow"><div class="grid"><label>Name<input id="category-name" maxlength="80" required placeholder="Early Seven"></label><label>Winning rule<select id="category-rule">${rules}</select></label><label>Prize or description<input id="category-prize" maxlength="200" placeholder="Gift hamper"></label><label>Ties<select id="category-policy"><option value="SHARED_PRIZE">Share the prize</option><option value="SUDDEN_DEATH">Sudden-death round</option></select></label></div><button id="add-category">Add category</button></form></details>
@@ -261,6 +277,11 @@ for(const section of ['appearance-panel','commentary-panel']){
 const openHostView=setupWorkspace('round',{
  'controls':'round','players-panel':'players','prizes-panel':'prizes','claims-panel':'prizes','powers-panel':'prizes','rounds-panel':'prizes','winners-panel':'prizes',
  'appearance-panel':'style','commentary-panel':'style','access-panel':'sharing','audit-panel':'activity','game-end-panel':'activity'
+});
+const firstGameGuide=$('#first-game-guide'),firstGameGuideKey='tambola-first-game-guide';
+try{firstGameGuide.open=localStorage.getItem(firstGameGuideKey)!=='closed';}catch{firstGameGuide.open=true;}
+firstGameGuide.addEventListener('toggle',()=>{
+ try{localStorage.setItem(firstGameGuideKey,firstGameGuide.open?'open':'closed');}catch{}
 });
 async function act(path,body){try{await req(path,'POST',body);}catch(error){await refresh();throw error;}await refresh();say('Saved.');}
 function line(container,label,actions=[],detail='',rowId){
@@ -319,6 +340,7 @@ function renderBoard(calls){
 }
 function controls(){const game=display.game,stopped=game.emergencyStopped,ended=game.status==='COMPLETED';
  const lobby=game.status==='CREATED',running=game.status==='RUNNING',paused=game.status==='PAUSED',unapproved=display.players.filter(p=>!p.approved).length;
+ firstGameGuide.hidden=!lobby;
  $('#start').hidden=!lobby||stopped;$('#pause').hidden=!running||stopped;$('#resume').hidden=!paused||stopped;$('#next').hidden=!running||stopped;
  $('#start').disabled=pendingButtons.has($('#start'))||!lobby||stopped||unapproved>0;$('#pause').disabled=pendingButtons.has($('#pause'))||!running;$('#resume').disabled=pendingButtons.has($('#resume'))||!paused||stopped||!!display.review;
  $('#next').disabled=pendingButtons.has($('#next'))||!running||stopped;$('#manualBtn').disabled=pendingButtons.has($('#manualBtn'))||!running||stopped;
