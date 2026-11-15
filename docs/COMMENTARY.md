@@ -1,6 +1,6 @@
 # Tambola live commentary
 
-The default text model is [Google Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite). The TV can read Hindi and English commentary with its built-in speech voices. [ElevenLabs Flash v2.5](https://elevenlabs.io/docs/overview/capabilities/text-to-speech) is optional for cloud speech. See [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing/) and [ElevenLabs API pricing](https://elevenlabs.io/pricing/api) for provider charges.
+The default text model is [Google Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite). The TV can read Hindi and English commentary with its built-in speech voices or use [ElevenLabs](https://elevenlabs.io/docs/overview/capabilities/text-to-speech) for cloud speech. See [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing/) and [ElevenLabs API pricing](https://elevenlabs.io/pricing/api) for provider charges.
 
 In **Live AI commentary**, enable narration per game. Choose English or Hindi,
 number frequency, shout-out focus and an interval of 1–30 calls (0 to turn off), commentary tone, winner announcements, voice source,
@@ -13,12 +13,20 @@ on the TV to hear the voice. Its local **Narration** switch can silence it.
 
 1. Open a game and expand **Live AI commentary**. Choose language, tone, audience, accent, and voice. You can preview with **Enable commentary** switched off.
 2. Under **Test commentary**, choose a sample event and click **Generate preview**. A successful request shows the model and a separate **Gemini reaction**. **Scripted fallback** explains why a reaction was unavailable, such as a missing or rejected key, an unavailable model, quota, a timeout, or a filtered response.
-3. Play the sample on your current device. Browser playback uses that device's voices, which can differ from the TV's. Cloud speech uses the selected ElevenLabs voice and falls back to browser speech if it fails.
+3. Play the sample on your current device. For a cloud sample, use the audio player and **Compare browser voice** to hear the same line with both voices. The browser uses voices installed on the current device, which can differ from the TV's.
 4. For an adults-only game, enable **Allow sexual innuendo (adults only)** and accept the confirmation. Set **Innuendo intensity** to **Light** for subtle wordplay, **Cheeky** for an obvious double meaning, or **Bold** for a clearly suggestive punchline. Pick the same sample event at different levels to compare the reactions. Re-enable **Family friendly** to turn the meter off.
 
 Previews use fictional player and game data with your unsaved settings. They stay in the host console. The server allows up to ten previews per minute per host on each instance. Use **Save commentary** when you’re ready to apply the settings.
 
-During play, **Refresh live status** shows which provider contributed to the last saved announcement. Announcements made before diagnostics were added show their source as unavailable.
+Cloud previews allow 25 seconds for the audio to return. If an Expressive preview times out, try the same sample with **Fast · Flash v2.5**. Live calls allow eight seconds for cloud audio before falling back to browser speech.
+
+During play, **Refresh live status** reports whether the server generated ElevenLabs audio or encountered an error. The TV caption shows the source when playback begins, including **TV browser fallback** when the TV reads a cloud announcement locally. Older announcements may have no saved voice report.
+
+## If the voice sounds flat
+
+1. In **Style & commentary → Live AI commentary**, select **Cloud voice (ElevenLabs)** and set **Cloud voice delivery** to **Expressive · Eleven v3**. It uses delivery cues for suspense, encouragement, and winner celebrations. Your configured key and voice ID apply to both delivery modes. **Fast · Flash v2.5** is the default and prioritizes speed.
+2. Start with **Energetic** for the commentary tone. Preview a **Number call**, **Player one match away**, and **Confirmed prize winner** in the language you use. Voices vary in how strongly they respond to cues, so audition a voice suited to that language if the delivery still feels flat.
+3. Select **Save commentary**, turn **Sound** on at the TV, and check for **ElevenLabs** on the next spoken caption.
 
 ## Set up the providers
 

@@ -23,10 +23,10 @@ const pgPort=await freePort(),apiPort=await freePort(),port2=await freePort(),tl
 const output=await mkdtemp(join(tmpdir(),'tambola-hosted-')),origin='https://localhost:'+tlsPort;
 const pg=new EmbeddedPostgres({databaseDir:join(output,'pg'),port:pgPort,user:'postgres',password:'test-only',persistent:false,autoRehydrateSymlinks:true,postgresFlags:['-k','','-h','127.0.0.1'],onLog:()=>{},onError:console.error});
 const database=`postgresql://postgres:test-only@127.0.0.1:${pgPort}/tambola`;
-const env={...process.env,HOSTING_MODE:'cloud',DATABASE_URL:database,PUBLIC_APP_ORIGIN:origin,GOOGLE_CLIENT_ID:'test-google-client',GOOGLE_CLIENT_SECRET:'test-only',HOST_ALLOWED_EMAILS:'alice@example.com,bob@example.com,charlie@example.com',ADMIN_TOKEN:'old-admin-token-must-not-work',GEMINI_API_KEY:'gemini-rehearsal-key',GEMINI_MODEL:'',ELEVENLABS_API_KEY:''};
+const env={...process.env,HOSTING_MODE:'cloud',DATABASE_URL:database,PUBLIC_APP_ORIGIN:origin,GOOGLE_CLIENT_ID:'test-google-client',GOOGLE_CLIENT_SECRET:'test-only',HOST_ALLOWED_EMAILS:'alice@example.com,bob@example.com,charlie@example.com',ADMIN_TOKEN:'old-admin-token-must-not-work',GEMINI_API_KEY:'gemini-rehearsal-key',GEMINI_MODEL:'',ELEVENLABS_API_KEY:'elevenlabs-rehearsal-key',COMMENTARY_ELEVEN_VOICE_HI_IN:'voice-hi'};
 let db,browser,proxy,currentPort=apiPort;const children=[],logs=[];
 const hash=value=>createHash('sha256').update(value).digest('hex');
-async function start(port){const child=spawn(process.execPath,['--import','./tests/fixtures/google-provider.mjs','apps/server/dist/main.js'],{cwd:root,env:{...env,PORT:String(port)},stdio:['ignore','pipe','pipe']});children.push(child);child.stdout.on('data',b=>logs.push(String(b)));child.stderr.on('data',b=>logs.push(String(b)));for(let i=0;i<150;i++){if(child.exitCode!==null)throw Error(logs.join('').slice(-3000));try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)return child;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Startup timeout');}
+async function start(port){const child=spawn(process.execPath,['--import','./tests/fixtures/google-provider.mjs','--import','./tests/fixtures/elevenlabs-provider.mjs','apps/server/dist/main.js'],{cwd:root,env:{...env,PORT:String(port)},stdio:['ignore','pipe','pipe']});children.push(child);child.stdout.on('data',b=>logs.push(String(b)));child.stderr.on('data',b=>logs.push(String(b)));for(let i=0;i<150;i++){if(child.exitCode!==null)throw Error(logs.join('').slice(-3000));try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)return child;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Startup timeout');}
 async function stop(child,signal='SIGTERM'){if(child?.exitCode===null && child.signalCode===null){const done=once(child,'exit');child.kill(signal);await done;}}
 async function rawRequest(path,{method='GET',headers={},body,port=currentPort}={}){
  return new Promise((resolve,reject)=>{const req=httpRequest({host:'127.0.0.1',port,path,method,headers:{host:'localhost:'+tlsPort,...(body===undefined?{}:{'content-length':Buffer.byteLength(body)}),...headers}},res=>{const chunks=[];res.on('data',b=>chunks.push(b));res.on('end',()=>resolve(new Response(Buffer.concat(chunks),{status:res.statusCode,headers:Object.fromEntries(Object.entries(res.headers).map(([k,v])=>[k,Array.isArray(v)?v.join(', '):v]))})));});req.on('error',reject);req.end(body);});
@@ -54,7 +54,7 @@ try{
  const alice=await login('alice@example.com'),bob=await login('bob@example.com'),charlie=await login('charlie@example.com');
  assert.match(alice,/^__Host-tambola-host=/);const cookieToken=alice.split('=')[1];assert.equal((await db.query('SELECT 1 FROM host_sessions WHERE token_hash=$1',[hash(cookieToken)])).rowCount,1);
  console.log('PASS Google PKCE, signed ID tokens, audience/issuer/expiry/nonce, invitation and replay checks');
- const make=async(cookie,name)=> (await api('/games',{cookie,method:'POST',body:{name,intervalSeconds:30},expected:201})).data;
+ const make=async(cookie,name)=> (await api('/games',{cookie,method:'POST',body:{name,intervalSeconds:3600},expected:201})).data;
  const game=await make(alice,'Alice’s Diwali'),other=await make(bob,'Bob’s Diwali'),id=game.id;
  const commentary='/games/'+id+'/commentary',previewPath=commentary+'/admin/preview';
  const sample={scenario:'number',number:42,settings:{language:'en'}};
@@ -143,31 +143,72 @@ try{
  assert.equal((await api(commentary+'/admin/settings',{cookie:alice})).data.language,'hi');
  assert.deepEqual((await api(commentary,{cookie:alice})).data.events,[]);
  await page.screenshot({path:join(output,'host-gemini-preview.png'),fullPage:true});
+ await page.locator('#commentary-language').selectOption('hi');
+ await page.locator('#commentary-provider').selectOption('elevenlabs');
+ await page.locator('#commentary-delivery').selectOption('expressive');
+ await page.locator('#commentary-tone').selectOption('energetic');
+ await page.locator('#commentary-test-number').fill('47');
+ await page.locator('#commentary-generate').click();
+ await page.getByText(/Generating cloud preview/).waitFor();
+ await page.getByText('ElevenLabs audio is ready to play · Eleven v3',{exact:true}).waitFor();
+ assert.ok(await page.getByRole('button',{name:'Compare browser voice'}).isVisible());
+ await page.locator('#commentary-preview-audio').evaluate(audio=>audio.play());
+ assert.equal((await api(commentary+'/admin/settings',{cookie:alice})).data.voiceProvider,'browser');
+ await page.locator('#commentary-save').click();
+ await page.waitForFunction(()=>document.querySelector('#commentary-status').textContent.startsWith('Commentary saved.'));
+ assert.equal((await api(commentary+'/admin/settings',{cookie:alice})).data.voiceDelivery,'expressive');
  await checkHostAccount('/admin/'+id);await page.waitForFunction(()=>document.querySelector('#name').textContent.includes('Alice'));await page.getByRole('combobox',{name:'Host section'}).selectOption('sharing');await page.locator('#pair-tv').click();await page.waitForFunction(()=>document.querySelector('#pair-code').textContent.length>5);const pairingLink=await page.locator('#pair-link').getAttribute('href');
- const tvContext=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1920,height:1080}}),tv=await tvContext.newPage();tv.on('pageerror',e=>errors.push(e.message));await tv.goto(pairingLink);await tv.waitForURL('**/tv/'+game.joinCode);await tv.waitForFunction(()=>document.querySelector('#lobbyCode').textContent.length===6&&document.querySelector('#roster').textContent.includes('Festival Guest'));assert.equal(new URL(tv.url()).hash,'');await tv.screenshot({path:join(output,'paired-tv.png')});
+ const tvContext=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1920,height:1080}}),tv=await tvContext.newPage();
+ tv.on('pageerror',e=>errors.push(e.message));
+ await tv.addInitScript(()=>Object.defineProperty(window,'speechSynthesis',{value:{
+  getVoices:()=>[],speak(utterance){utterance.onstart?.();setTimeout(()=>utterance.onend?.(),100);},cancel(){},
+ }}));
+ const firstCommentaryPoll=tv.waitForResponse(response=>new URL(response.url()).pathname===commentary&&response.ok());
+ await tv.goto(pairingLink);await tv.waitForURL('**/tv/'+game.joinCode);
+ await firstCommentaryPoll;
+ await tv.waitForFunction(()=>document.querySelector('#lobbyCode').textContent.length===6&&document.querySelector('#roster').textContent.includes('Festival Guest'));assert.equal(new URL(tv.url()).hash,'');await tv.screenshot({path:join(output,'paired-tv.png')});
+ await tv.getByRole('button',{name:'Sound off · press OK',exact:true}).click();
+ await tv.getByRole('button',{name:'Sound on',exact:true}).waitFor();
+ const callNumber=number=>api('/games/'+id+'/calls/manual',{cookie:alice,method:'POST',body:{number},expected:201});
+ const liveSettings=async()=>(await api(commentary+'/admin/settings',{cookie:alice})).data;
+ await api('/games/'+id+'/start',{cookie:alice,method:'POST',expected:201});
+ await callNumber(42);
+ await tv.getByTitle('Last narration voice · ElevenLabs',{exact:true}).waitFor();
+ const line=(await api(commentary,{cookie:alice})).data.events.find(event=>event.kind==='NUMBER');
+ assert.match(line?.text,/42.*लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!/);
+ assert.deepEqual((await liveSettings()).lastAnnouncement.gemini,{status:'generated',model:'gemini-3.5-flash-lite'});
+ assert.deepEqual((await liveSettings()).lastAnnouncement.voice,{status:'generated',model:'eleven_v3'});
+ const audioUrl='**/commentary/*/audio';
+ await tv.route(audioUrl,route=>route.abort());
+ await callNumber(44);
+ await tv.getByTitle('Last narration voice · TV browser fallback',{exact:true}).waitFor();
+ assert.deepEqual((await liveSettings()).lastAnnouncement.voice,{status:'generated',model:'eleven_v3'});
+ await tv.unroute(audioUrl);
+ await callNumber(88);
+ await api(commentary,{cookie:alice});
+ let rejectedVoice;
+ for(let i=0;i<25;i++){
+  rejectedVoice=(await liveSettings()).lastAnnouncement.voice;
+  if(rejectedVoice.httpStatus===429)break;
+  await new Promise(resolve=>setTimeout(resolve,80));
+ }
+ assert.deepEqual(rejectedVoice,{status:'rejected',model:'eleven_v3',httpStatus:429});
+ console.log('PASS expressive Hindi preview, live cloud audio, TV fallback and provider rejection diagnostics');
  await page.getByText('Manage paired TVs',{exact:true}).click();page.once('dialog',d=>d.accept());await page.locator('#revoke-tv').click();await tv.waitForURL('**/screen');
  const guestContext=await browser.newContext({ignoreHTTPSErrors:true}),landing=await guestContext.newPage();await landing.goto(origin);await landing.locator('#code').fill(game.joinCode);await landing.locator('#join button').click();await landing.waitForURL('**/join/'+id);
  await page.goto(origin+'/admin');await page.getByRole('button',{name:'Sign out',exact:true}).click();await page.waitForURL(origin+'/');await api('/games',{cookie:alice,expected:401});assert.deepEqual(errors,[]);
  await browser.close();browser=null;
  console.log('PASS phone host desk, QR pairing, TV revocation, guest landing and logout in HTTPS browsers');
  const renewed=await login('alice@example.com');
- await api('/games/'+id+'/start',{cookie:renewed,method:'POST',expected:201});
- await api('/games/'+id+'/calls/manual',{cookie:renewed,method:'POST',body:{number:42},expected:201});
- let line;
- for(let i=0;i<25&&!line;i++){
-  line=(await api(commentary,{cookie:renewed})).data.events.find(event=>event.kind==='NUMBER');
-  if(!line)await new Promise(r=>setTimeout(r,80));
- }
- assert.match(line?.text,/42.*लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!/);
- assert.deepEqual((await api(commentary+'/admin/settings',{cookie:renewed})).data.lastAnnouncement.gemini,{status:'generated',model:'gemini-3.5-flash-lite'});
- await api(commentary+'/admin/settings',{cookie:renewed,method:'POST',body:{language:'en',familyFriendly:false,allowSexualReferences:true,innuendoIntensity:3},expected:201});
+ await api(commentary+'/admin/settings',{cookie:renewed,method:'POST',body:{language:'en',voiceProvider:'browser',familyFriendly:false,allowSexualReferences:true,innuendoIntensity:3},expected:201});
  await api('/games/'+id+'/calls/manual',{cookie:renewed,method:'POST',body:{number:43},expected:201});
+ let adultLine;
  for(let i=0;i<25;i++){
-  line=(await api(commentary,{cookie:renewed})).data.events.find(event=>event.kind==='NUMBER');
-  if(line)break;
+  adultLine=(await api(commentary,{cookie:renewed})).data.events.find(event=>event.kind==='NUMBER');
+  if(adultLine)break;
   await new Promise(r=>setTimeout(r,80));
  }
- assert.match(line?.text,/43.*The board is hot and the balls are playing hard to get!/);
+ assert.match(adultLine?.text,/43.*The board is hot and the balls are playing hard to get!/);
  const b=await start(port2);assert.equal((await api('/games/'+id,{cookie:renewed})).data.status,'RUNNING');
  await stop(b);assert.equal((await api('/games/'+id,{cookie:renewed})).data.status,'RUNNING'); // Standby shutdown cannot pause leader.
  const standby=await start(port2);await stop(a,'SIGKILL');currentPort=port2;

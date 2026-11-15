@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {CommentaryService,parseSettings} from '../apps/server/dist/commentary/commentary.service.js';
+import {synthesizeCommentarySpeech} from '../apps/server/dist/commentary/elevenlabs-commentary.js';
 
 function mockProvider(t, env, fetch){
  for(const [key,value] of Object.entries(env)){
@@ -119,10 +120,28 @@ test('Gemini timeouts keep the scripted announcement',async t=>{
  assert.equal(line.gemini.status,'timeout');assert.equal(line.text,line.script);assert.equal(line.reaction,null);
 });
 test('ElevenLabs uses a configured licensed voice and Hindi language',async t=>{
+ const line='नंबर पाँच';
+ const settings=parseSettings({language:'hi',voiceProvider:'elevenlabs',voiceStyle:'licensed'});
+ assert.equal(settings.voiceDelivery,'fast');
+ assert.throws(()=>parseSettings({voiceDelivery:'eleven_unrecognized'}),/Fast or Expressive/);
  mockProvider(t,{ELEVENLABS_API_KEY:'test-only-key',COMMENTARY_ELEVEN_VOICE_LICENSED:'licensed-test'},async(url,options)=>{
   assert.match(url,/licensed-test/);assert.equal(options.headers['xi-api-key'],'test-only-key');
-  assert.equal(JSON.parse(options.body).language_code,'hi');return new Response(Uint8Array.from([1,2,3]));
+  assert.deepEqual(JSON.parse(options.body),{text:line,language_code:'hi',model_id:'eleven_flash_v2_5'});
+  return new Response(Uint8Array.from([1,2,3]),{headers:{'content-type':'audio/mpeg'}});
  });
- const service=new CommentaryService({});
- assert.deepEqual(await service.speech('नंबर पाँच',parseSettings({language:'hi',voiceProvider:'elevenlabs',voiceStyle:'licensed'})),{status:'generated',audio:Buffer.from([1,2,3])});
+ assert.deepEqual(await synthesizeCommentarySpeech(line,settings,'warmly'),{status:'generated',model:'eleven_flash_v2_5',audio:Buffer.from([1,2,3])});
+});
+test('Expressive renders Hindi with a trusted cue and rejects invalid cloud audio',async t=>{
+ const settings=parseSettings({language:'hi',voiceProvider:'elevenlabs',voiceDelivery:'expressive'});
+ const replies=[new Response(Uint8Array.from([1,2,3]),{headers:{'content-type':'audio/mpeg'}}),Response.json({unexpected:'test-only-key'}),new Response(null,{status:429})];
+ const fetch=mockProvider(t,{ELEVENLABS_API_KEY:'test-only-key',COMMENTARY_ELEVEN_VOICE_HI_IN:'hindi-test'},async(url,options)=>{
+  assert.match(url,/\/hindi-test\?/);
+  assert.deepEqual(JSON.parse(options.body),{text:'[excited] मीरा ने Full House जीता! shouts',model_id:'eleven_v3',language_code:'hi',voice_settings:{stability:0.5}});
+  return replies.shift();
+ });
+ const render=()=>synthesizeCommentarySpeech('मीरा ने Full House जीता! [shouts]',settings,'excited');
+ assert.deepEqual(await render(),{status:'generated',model:'eleven_v3',audio:Buffer.from([1,2,3])});
+ assert.deepEqual(await render(),{status:'unavailable',model:'eleven_v3'});
+ assert.deepEqual(await render(),{status:'rejected',model:'eleven_v3',httpStatus:429});
+ assert.equal(fetch.mock.callCount(),3);
 });
