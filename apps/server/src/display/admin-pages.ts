@@ -2,8 +2,10 @@ import { commentaryFields, commentaryEditorJs } from '../commentary/commentary-e
 import { appearanceFields, appearanceEditorJs } from './appearance-editor.js';
 import { cloudMode, hostContext } from '../hosting/context.js';
 import { html } from './theme.js';
+import { hostThemeCss } from './host-theme.js';
 import { workspaceCss, workspaceNavigation } from './workspace-theme.js';
 import { hostGuideButton, hostGuideCss, hostGuideJs, renderHostGuide } from '../onboarding/host-walkthrough.js';
+import { hostTourButton, hostTourCss, hostTourMarkup, hostTourScript } from '../onboarding/host-tour.js';
 import { RULE_LABELS } from '../winners/domain/rules.js';
 
 function escapeHtml(value: string): string {
@@ -119,12 +121,12 @@ function updateBadge(node,status,stopped){node.textContent=displayStatus(status,
 
 export function homeAdminPage():string {
  return html('Tambola · Host desk',String.raw`
- <style>${workspaceCss}${hostGuideCss}</style>
+ <style>${workspaceCss}${hostGuideCss}${hostThemeCss}${hostTourCss}</style>
  ${hostHeader(false)}
  <div class="host-layout">${hostRail(homeViews,false)}<main class="host-content">
  <p id="message" class="notice" role="status"></p>
  <section id="games-view" data-view="games">
-  <div class="surface-heading"><div><h1 tabindex="-1" data-view-heading>Games</h1><p class="section-note">Manage your lobbies and completed rounds.</p></div><div class="row">${hostGuideButton}<a class="button" href="#create" data-view-link="create">+ New game</a></div></div>
+  <div class="surface-heading"><div><h1 tabindex="-1" data-view-heading>Games</h1><p class="section-note">Manage your lobbies and completed rounds.</p></div><div class="row">${hostTourButton}${hostGuideButton}<a class="button" href="#create" data-view-link="create">+ New game</a></div></div>
   <div class="game-filters"><input id="search" type="search" aria-label="Search games" placeholder="Find a game or code"><select id="filter" aria-label="Filter games"><option value="active">Active games</option><option value="all">All games</option><option value="COMPLETED">Completed</option></select></div>
   <div class="row between game-list-meta"><span id="game-count" class="small" hidden></span><div class="row"><span id="health" class="connection">Checking server…</span>${cloudMode()?refreshButton:''}</div></div>
   <div id="games" class="game-cards"><p class="section-note">${cloudMode()?'Loading your games…':'Use Admin key in the header to unlock your games.'}</p></div>
@@ -137,8 +139,10 @@ export function homeAdminPage():string {
   </form>
  </section>
  </main></div>
- ${renderHostGuide(cloudMode())}`,helpers+hostGuideJs+workspaceNavigation+appearanceEditorJs+String.raw`
-setupWorkspace('games',{'create-panel':'create'});
+ ${renderHostGuide(cloudMode())}
+ ${hostTourMarkup}`,helpers+hostGuideJs+workspaceNavigation+appearanceEditorJs+String.raw`
+const openHostView=setupWorkspace('games',{'create-panel':'create'});
+${hostTourScript('desk',cloudMode())}
 let games=null;
 function render(){
  if(!games)return;
@@ -158,13 +162,13 @@ bindHostLoad(async()=>{await load();setKeyFormOpen(false);say('');});$('#filter'
 $('#create-form').onsubmit=e=>{e.preventDefault();run($('#create'),async()=>{const game=await request('/games','POST',{...appearancePayload(),intervalSeconds:Number($('#interval').value)});location.href='/admin/'+game.id;});};
 fetch('/health/ready',{cache:'no-store'}).then(r=>{$('#health').textContent=r.ok?'● Server ready':'Server needs attention';}).catch(()=>$('#health').textContent='Server unavailable');
 load().catch(error=>say(error.message));setInterval(()=>load().catch(error=>say(error.message)),15000);
-`,'workspace');
+`,'workspace host-workspace');
 }
 
 export function adminPage(_gameId:string):string {
  const rules=Object.entries(RULE_LABELS).map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('');
  return html('Tambola · Game console',String.raw`
- <style>${workspaceCss}${hostGuideCss}
+ <style>${workspaceCss}${hostGuideCss}${hostThemeCss}${hostTourCss}
  .first-game-steps{display:grid;gap:.6rem 1.5rem;grid-template-columns:repeat(2,minmax(0,1fr));margin:0;padding-left:1.2rem}
  .first-game-steps a,.first-game-steps strong{font-weight:750}
  .first-game-steps span{display:block;color:var(--muted);font-size:.82rem}
@@ -174,9 +178,9 @@ export function adminPage(_gameId:string):string {
  .claim-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;width:min(100%,460px);margin:8px 0;font-variant-numeric:tabular-nums}
  .claim-cell{aspect-ratio:1.45;display:grid;place-items:center;background:var(--occasion-ticket-paper);color:#402636;border-radius:var(--occasion-cell-radius);font-weight:800;font-size:clamp(12px,3.2vw,18px)}
  .claim-cell.empty{background:var(--occasion-line)}.claim-cell.hit{background:#83e5bb;color:#073829}.claim-cell.latest{background:#00e5ff;color:#081d2a}
- .print-dialog{width:min(600px,calc(100% - 24px));max-height:85vh;background:var(--occasion-panel);color:#fff3dc;border:1px solid var(--occasion-line);border-radius:16px;padding:18px}
+ .print-dialog{width:min(600px,calc(100% - 24px));max-height:85vh;background:var(--occasion-panel);color:var(--ink);border:1px solid var(--occasion-line);border-radius:16px;padding:18px}
  .print-dialog::backdrop{background:#000b}.print-options{max-height:42vh;overflow-y:auto;margin:10px 0}
- .workspace .print-option{display:flex;align-items:center;gap:8px;margin:0;padding:8px 4px;color:#fff3dc;border-bottom:1px solid var(--soft-line)}
+ .workspace .print-option{display:flex;align-items:center;gap:8px;margin:0;padding:8px 4px;color:var(--ink);border-bottom:1px solid var(--soft-line)}
  .workspace .print-option input{width:20px;height:20px;margin:0;flex:none}.print-option span{min-width:0;overflow-wrap:anywhere}
  </style>
  ${hostHeader(true)}
@@ -197,6 +201,7 @@ export function adminPage(_gameId:string):string {
      <li><a href="#players" data-view-link="players">Approve the players you recognize</a><span>Approved drafts submit when you start. Ask guests to keep their recovery codes private.</span></li>
      <li><strong>Start the round and confirm the first prize</strong><span>Use Call next now to advance a draw. Review the highlighted matches when a claim appears.</span></li>
     </ol>
+    <div>${hostTourButton}</div>
     <p class="section-note">Before guests arrive, try a separate test game with another phone or run through the <a href="/practice" target="_blank" rel="noopener">one-minute practice round</a>.</p>
    </div>
   </details>
@@ -260,7 +265,8 @@ export function adminPage(_gameId:string):string {
 
  <dialog id="print-dialog" class="print-dialog" aria-labelledby="print-title"><h2 id="print-title">Select tickets for A4</h2><p class="small">Choose the submitted tickets to print. Each sheet holds up to three tickets.</p><div class="row"><button id="print-select-all" class="ghost" type="button">Select all</button><button id="print-select-none" class="ghost" type="button">Deselect all</button><span id="print-count" class="small"></span></div><div id="print-options" class="print-options"></div><p id="print-error" class="notice" role="alert"></p><div class="row"><button id="print-selected" type="button">Preview selected</button><button id="print-cancel" class="ghost" type="button">Cancel</button></div></dialog>
  </main></div>
- ${renderHostGuide(cloudMode())}`,helpers+hostGuideJs+workspaceNavigation+appearanceEditorJs+String.raw`
+ ${renderHostGuide(cloudMode())}
+ ${hostTourMarkup}`,helpers+hostGuideJs+workspaceNavigation+appearanceEditorJs+String.raw`
 const id=location.pathname.split('/').filter(Boolean).pop(),root='/games/'+encodeURIComponent(id);
 let display=null,players=[],categories=[],refreshPromise=null,queued=false,intervalLoaded=false,serverClock=0,clockAt=0;
 let knownClaims=null,knownPowers=null,alertContext=null,alertEnabled=false,pendingClaim=null,loadedGameList=null;
@@ -281,6 +287,7 @@ const openHostView=setupWorkspace('round',{
  'controls':'round','players-panel':'players','prizes-panel':'prizes','claims-panel':'prizes','powers-panel':'prizes','rounds-panel':'prizes','winners-panel':'prizes',
  'appearance-panel':'style','commentary-panel':'style','access-panel':'sharing','audit-panel':'activity','game-end-panel':'activity'
 });
+${hostTourScript('game',cloudMode())}
 const firstGameGuide=$('#first-game-guide'),firstGameGuideKey='tambola-first-game-guide';
 try{firstGameGuide.open=localStorage.getItem(firstGameGuideKey)!=='closed';}catch{firstGameGuide.open=true;}
 firstGameGuide.addEventListener('toggle',()=>{
@@ -431,5 +438,5 @@ $('#review-confirm').onclick=()=>run($('#review-confirm'),async()=>{const result
 $('#review-cancel').onclick=()=>run($('#review-cancel'),()=>act('/admin/claims/'+display.review.claim_id+'/cancel'));
 $('#enable-alerts').onclick=()=>{try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio){say('Claim sounds are unavailable in this browser.');return;}alertContext??=new Audio();alertEnabled=true;alertContext.resume().then(()=>{claimSound();$('#enable-alerts').textContent='Claim sound enabled';}).catch(()=>say('Click again to enable claim sound.'));}catch{say('Claim sounds are unavailable in this browser.');}};
 if(hosted||keyBox.value)loadGames().catch(error=>say(error.message));refresh();setInterval(refresh,5000);setInterval(clock,300);window.addEventListener('tambola:changed',refresh);
-`,'workspace',['/print/client.js']);
+`,'workspace host-workspace',['/print/client.js']);
 }
