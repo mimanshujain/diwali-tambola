@@ -68,3 +68,5 @@ For deployment steps, backups and a real sign-in rehearsal, see the [hosted pilo
 - The home page includes a 25-second captioned gameplay clip using a fictional game. Share it alongside a link to the practice round when inviting pilot hosts. Media is bundled in `apps/server/public/gameplay` and loaded when visitors select **Watch gameplay**. When replacing the clip, change the version in both asset filenames and the public paths to keep cached copies consistent.
 
 The **Host guide** in the host desk and game console has a 48-second walkthrough and chapter buttons for setup, prizes, pairing, approvals, the draw, claims, and closing the round. Hosts can open it during play. The Raspberry Pi guide also points to the local TV link.
+
+Choose **Take a tour** on the host desk or in a game console’s first-game checklist. During a round, open **Host guide → Take a tour**. Use **Next**, **Back**, or **Skip tour** to explore the controls. The host workspace uses the homepage palette. Choose the event appearance to style the TV, phone ticket, and print previews.

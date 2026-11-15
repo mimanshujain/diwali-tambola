@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { HostingService } from './hosting.service.js';
 import { cloudMode, hostContext } from './context.js';
 import { html } from '../display/theme.js';
+import { hostThemeCss } from '../display/host-theme.js';
 import { renderHostInvitationPage, renderLaunchPage, renderPracticePage, renderRulesPage } from '../onboarding/public-pages.js';
 
 function requireCloud():void {if(!cloudMode())throw new NotFoundException();}
@@ -30,7 +31,7 @@ export class HostingController {
 
   @Get('auth/login') @Header('Content-Type','text/html; charset=utf-8')
   login():string {
-    requireCloud();return html('Sign in · Tambola',`<main class="wrap stack" style="max-width:560px;padding-top:12vh"><a href="/" class="brand">✦ TAMBOLA</a><section class="panel"><div class="eyebrow">Your host desk</div><h1>A celebration<br>of your own.</h1><p>Sign in with your invited Google account to manage your games.</p><a class="button" href="/auth/google">Continue with Google</a><p class="small" style="margin-top:24px">Only you can manage your games. Guests join separately using your game code.</p></section><a href="/">Joining as a guest? Enter a game code →</a></main>`,'');
+    requireCloud();return html('Sign in · Tambola',`<style>${hostThemeCss}</style><main class="wrap stack" style="max-width:560px;padding-top:12vh"><a href="/" class="brand">✦ TAMBOLA</a><section class="panel"><div class="eyebrow">Your host desk</div><h1>A celebration<br>of your own.</h1><p>Sign in with your invited Google account to manage your games.</p><a class="button" href="/auth/google">Continue with Google</a><p class="small" style="margin-top:24px">Only you can manage your games. Guests join separately using your game code.</p></section><a href="/">Joining as a guest? Enter a game code →</a></main>`,'','host-workspace');
   }
 
   @Get('auth/google')
@@ -40,7 +41,7 @@ export class HostingController {
   async callback(@Req() req:IncomingMessage,@Res() res:ServerResponse,@Query('code') code:unknown,@Query('state') state:unknown):Promise<void> {
     requireCloud();
     try {await this.hosting.finish(req,res,code,state);redirect(res,'/admin');}
-    catch {res.statusCode=401;res.setHeader('Content-Type','text/html; charset=utf-8');res.end(html('Sign-in unsuccessful',`<main class="wrap" style="max-width:600px"><h1>We couldn’t sign you in.</h1><p>Use your invited Google account and finish signing in within ten minutes. If you need an invitation, contact the person running this service.</p><a class="button" href="/auth/login">Try again</a></main>`,''));}
+    catch {res.statusCode=401;res.setHeader('Content-Type','text/html; charset=utf-8');res.end(html('Sign-in unsuccessful',`<style>${hostThemeCss}</style><main class="wrap" style="max-width:600px"><h1>We couldn’t sign you in.</h1><p>Use your invited Google account and finish signing in within ten minutes. If you need an invitation, contact the person running this service.</p><a class="button" href="/auth/login">Try again</a></main>`,'','host-workspace'));}
   }
 
   @Get('auth/me')

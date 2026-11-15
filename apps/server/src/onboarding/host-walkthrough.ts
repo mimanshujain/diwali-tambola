@@ -1,4 +1,5 @@
 import { renderVideoPreview, videoPreviewCss, videoPreviewJs } from './video-preview.js';
+import { hostTourButton } from './host-tour.js';
 
 const chapters = [
   {time:0,label:'Create a game',help:'In New game, set the event name, theme, and seconds between calls.'},
@@ -15,11 +16,11 @@ export const hostGuideButton = '<button type="button" class="ghost header-action
 export function renderHostGuide(cloud: boolean): string {
   const chapterButtons = chapters.map(({time,label,help})=>`<li><button type="button" class="ghost small-button" data-host-chapter="${time}">0:${String(time).padStart(2,'0')} <span>${label}</span></button><p class="section-note">${help}</p></li>`).join('');
   const preview = renderVideoPreview({
-    id:'host-walkthrough',file:'host-v1',title:'Tambola host walkthrough',watchLabel:'Watch host walkthrough',
+    id:'host-walkthrough',file:'host-v2',title:'Tambola host walkthrough',watchLabel:'Watch host walkthrough',
     seconds:48,lazyPoster:true,transcript:chapters.map(chapter=>chapter.help).join(' ').replaceAll('&','&amp;'),
   });
   return `<dialog id="host-guide" class="host-guide" aria-labelledby="host-guide-title">
-    <div class="row between"><h2 id="host-guide-title">Host walkthrough</h2><form method="dialog"><button class="ghost header-action" type="submit" autofocus>Close</button></form></div>
+    <div class="row between"><h2 id="host-guide-title">Host walkthrough</h2><div class="row">${hostTourButton}<form method="dialog"><button class="ghost header-action" type="submit" autofocus>Close</button></form></div></div>
     ${preview}
     ${cloud?'':'<p class="section-note">On your Pi, open the TV link on a screen connected to the same Wi-Fi.</p>'}
     <ol class="host-guide-chapters" aria-label="Walkthrough chapters">${chapterButtons}</ol>

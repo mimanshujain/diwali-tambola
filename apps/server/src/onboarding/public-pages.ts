@@ -1,15 +1,16 @@
 import { renderTicket, earlyFiveAt, practiceCalls, starterPrizes, playerSteps } from './game-guide.js';
+import { sitePalette } from './site-palette.js';
 import { renderVideoPreview, videoPreviewCss, videoPreviewJs } from './video-preview.js';
 
 const styles = `
-:root{color-scheme:light;--paper:#fbf5e9;--ink:#291d29;--muted:#64545f;--border:#dfd0bf;--gold:#f4bd66;--plum:#42293f;--accent:#653052;--green:#166049;--mint:#a6eed3;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+:root{${sitePalette}color-scheme:light;font-family:var(--site-sans)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font-size:16px;line-height:1.5}
 a{color:#63294e;text-underline-offset:.23em}
-:focus-visible{outline:3px solid #1b765b;outline-offset:3px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 [hidden]{display:none!important}
 h1,h2,h3,p{margin:0}
-h1,h2{font-family:"DM Serif Text",Georgia,serif;font-weight:500;line-height:1.08;letter-spacing:-.025em}
+h1,h2{font-family:var(--site-serif);font-weight:500;line-height:1.08;letter-spacing:-.025em}
 h1{font-size:clamp(2.6rem,6.2vw,5.5rem);max-width:12ch}
 h2{font-size:clamp(1.65rem,3.7vw,2.7rem)}
 h3{font-size:1.03rem}
@@ -26,17 +27,17 @@ button,input{font:inherit}
 .hero-copy,.stack{display:grid;gap:1rem;align-content:start}
 .lead{font-size:clamp(1.02rem,2vw,1.21rem);color:var(--muted);max-width:48ch}
 .button{display:inline-flex;justify-content:center;align-items:center;gap:.35rem;min-height:44px;padding:.65rem 1rem;border:1px solid var(--plum);border-radius:8px;background:var(--plum);color:white;text-decoration:none;font-weight:720;cursor:pointer}
-.button:hover{background:#5c3555}
+.button:hover{background:var(--plum-hover)}
 .button.secondary{background:transparent;color:var(--plum);border-color:#9f828f}
 .button.secondary:hover{background:#f4eadf}
 .button:disabled{opacity:.55;cursor:default}
-.panel{border:1px solid var(--border);border-radius:14px;padding:clamp(.85rem,2.5vw,1.5rem);background:#fffaf2;min-width:0}
+.panel{border:1px solid var(--border);border-radius:14px;padding:clamp(.85rem,2.5vw,1.5rem);background:var(--card);min-width:0}
 .home-grid,.practice-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
 .home-grid h2{font-size:clamp(1.55rem,3vw,2rem)}
 .home-grid p{color:var(--muted)}
 .join-form{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:.6rem;max-width:440px}
 label{display:grid;gap:.25rem;font-weight:650;font-size:.9rem}
-input{border:1px solid #987c88;border-radius:8px;min-height:44px;background:#fffdf9;color:var(--ink);padding:.54rem .7rem;width:100%;min-width:0}
+input{border:1px solid var(--label-border);border-radius:8px;min-height:44px;background:var(--input);color:var(--ink);padding:.54rem .7rem;width:100%;min-width:0}
 #code{text-transform:uppercase;letter-spacing:.1em}
 .caption{font-size:.86rem;color:var(--muted)}
 .kicker{font-size:.8rem;font-weight:750;letter-spacing:.045em;color:var(--accent)}

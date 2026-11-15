@@ -131,7 +131,6 @@ function appearancePayload(){
  return {name:$('#appearance-name').value,themeId:appearanceTheme,themeLayers:appearanceLayers,welcomeMessage:$('#appearance-welcome').value};
 }
 function loadAppearance(game){
- window.applyTambolaAppearance(game);
  if(appearanceDirty&&appearanceLoaded)return;
  appearanceLoaded=true;
  appearanceTheme=game.themeId||'classic';

@@ -240,10 +240,13 @@ function setupWorkspace(defaultView,aliases={}){
    views.find(view=>view.dataset.view===key)?.querySelector('[data-view-heading]')?.focus({preventScroll:true});
   }
  }
- function openView(key){
+ function openView(key,{replace=false,focus=true}={}){
   if(!views.some(view=>view.dataset.view===key))return;
-  if(currentView()!==key)history.pushState(null,'','#'+key);
-  renderView(true);
+  if(currentView()!==key){
+   if(replace)history.replaceState(history.state,'','#'+key);
+   else history.pushState(null,'','#'+key);
+  }
+  renderView(focus);
  }
  for(const link of routeLinks)link.addEventListener('click',event=>{
   if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;

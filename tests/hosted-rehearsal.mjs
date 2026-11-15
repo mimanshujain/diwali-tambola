@@ -140,6 +140,7 @@ try{
 
  await lesson.goto(origin+'/');
  await lesson.getByRole('heading',{name:'Host Tambola on your TV.'}).waitFor();
+ const publicBackground=await lesson.evaluate(()=>getComputedStyle(document.body).backgroundColor);
  assert.ok(await lesson.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await lesson.screenshot({path:join(output,'launch-phone.png'),fullPage:true});
  await lesson.setViewportSize({width:1440,height:900});
@@ -183,12 +184,15 @@ try{
  }
  assert.ok(await lesson.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  assert.deepEqual(lessonErrors,[]);
+ await lesson.goto(origin+'/auth/login');
+ await lesson.getByRole('link',{name:'Continue with Google'}).waitFor();
+ assert.equal(await lesson.evaluate(()=>getComputedStyle(document.body).backgroundColor),publicBackground);
  await learner.close();
  console.log('PASS public homepage, host invitation, practice round and illustrated rules in mobile and desktop browsers');
  const host=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844}});await host.addCookies([{name:'__Host-tambola-host',value:cookieToken,url:origin,secure:true,httpOnly:true,sameSite:'Lax'}]);
  const page=await host.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  const hostVideoRequests=[];
- page.on('request',request=>{if(new URL(request.url()).pathname==='/media/gameplay/host-v1.mp4')hostVideoRequests.push(request.url());});
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/media/gameplay/host-v2.mp4')hostVideoRequests.push(request.url());});
 
  // Identity and logout must be available without a second profile request.
  await page.route('**/auth/me',route=>route.abort());
@@ -202,6 +206,27 @@ try{
   assert.ok(signOut&&signOut.y>=0&&signOut.y+signOut.height<=844,'Sign out must be visible without scrolling');
  }
  await checkHostAccount('/admin');await page.waitForSelector('.game-card');assert.equal(await page.locator('.game-card').count(),1);assert.equal(await page.locator('#key').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(output,'host-phone.png'),fullPage:true});
+ assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),publicBackground);
+ const tour=page.locator('#host-tour');
+ const deskUrl=page.url();
+ const historyBeforeTour=await page.evaluate(()=>history.length);
+ await page.getByRole('button',{name:'Take a tour',exact:true}).click();
+ await tour.getByRole('heading',{name:'Find a game',exact:true}).waitFor();
+ await tour.locator('.tour-spotlight').waitFor();
+ await page.screenshot({path:join(output,'host-desk-tour-phone.png')});
+ await tour.getByRole('button',{name:'Next',exact:true}).click();
+ await tour.getByRole('heading',{name:'Set the draw pace',exact:true}).waitFor();
+ assert.ok(await page.locator('#create-form').isVisible());
+ await tour.getByRole('button',{name:'Back',exact:true}).click();
+ await tour.getByRole('heading',{name:'Find a game',exact:true}).waitFor();
+ for(const title of ['Set the draw pace','Choose the occasion','Open your lobby']){
+  await tour.getByRole('button',{name:'Next',exact:true}).click();
+  await tour.getByRole('heading',{name:title,exact:true}).waitFor();
+ }
+ await tour.getByRole('button',{name:'Done',exact:true}).click();
+ await tour.waitFor({state:'hidden'});
+ await page.waitForURL(deskUrl);
+ assert.equal(await page.evaluate(()=>history.length),historyBeforeTour);
  const hostGuide=page.getByRole('dialog',{name:'Host walkthrough'});
  await page.getByRole('button',{name:'Host guide',exact:true}).click();
  await hostGuide.getByRole('button',{name:/Watch host walkthrough/}).waitFor();
@@ -216,6 +241,28 @@ try{
  assert.equal(await hostGuide.isVisible(),false);
  await page.goto(origin+'/admin/'+id);
  await page.getByText('First game checklist',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),publicBackground);
+ const consoleUrl=page.url();
+ const startTour=page.locator('#first-game-guide').getByRole('button',{name:'Take a tour',exact:true});
+ await page.setViewportSize({width:1440,height:900});
+ await startTour.click();
+ await tour.getByRole('heading',{name:'Set up the TV and invite guests',exact:true}).waitFor();
+ await tour.locator('.tour-spotlight').waitFor();
+ assert.ok(await page.locator('#pair-tv').isVisible());
+ await page.screenshot({path:join(output,'host-console-tour-desktop.png')});
+ await page.setViewportSize({width:390,height:844});
+ for(const title of ['Approve players','Choose the winning patterns','Run the draw','Review and confirm claims','Change the look or voice','Review activity and end the game']){
+  await tour.getByRole('button',{name:'Next',exact:true}).click();
+  await tour.getByRole('heading',{name:title,exact:true}).waitFor();
+  const card=await tour.locator('.tour-card').boundingBox();
+  assert.ok(card&&card.x>=0&&card.x+card.width<=390&&card.y>=0&&card.y+card.height<=844);
+ }
+ await tour.getByRole('button',{name:'Done',exact:true}).click();
+ await page.waitForURL(consoleUrl);
+ assert.equal((await api('/games/'+id,{cookie:alice})).data.status,'CREATED');
+ await page.waitForFunction(()=>document.querySelector('[data-preview-surface=tv]').dataset.theme==='elegant');
+ console.log('PASS matched public and admin palettes, scoped occasion preview, and mobile and desktop tours');
+
  await page.getByRole('link',{name:'Choose prizes',exact:true}).click();
  await page.getByRole('heading',{name:'Prizes & claims',exact:true}).waitFor();
  await page.getByRole('combobox',{name:'Host section'}).selectOption('style');
@@ -276,10 +323,15 @@ try{
  await api('/games/'+id+'/start',{cookie:alice,method:'POST',expected:201});
  await page.getByRole('button',{name:'Host guide',exact:true}).click();
  await hostGuide.getByRole('heading',{name:'Host walkthrough'}).waitFor();
- await page.keyboard.press('Escape');
+ const liveUrl=page.url();
+ await hostGuide.getByRole('button',{name:'Take a tour',exact:true}).click();
+ await tour.getByRole('heading',{name:'Set up the TV and invite guests',exact:true}).waitFor();
  await hostGuide.waitFor({state:'hidden'});
+ await page.keyboard.press('Escape');
+ await tour.waitFor({state:'hidden'});
+ await page.waitForURL(liveUrl);
  assert.equal((await api('/games/'+id,{cookie:alice})).data.status,'RUNNING');
- console.log('PASS host walkthrough chapter seek, close and active-round access');
+ console.log('PASS host walkthrough, chapter seeking, tour exit, and active-round access');
 
  await callNumber(42);
  await tv.getByTitle('Last narration voice · ElevenLabs',{exact:true}).waitFor();
