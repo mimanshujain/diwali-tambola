@@ -3,14 +3,15 @@ import { DatabaseService } from '../database/database.service.js';
 import { hostId } from '../hosting/context.js';
 import { geminiKey, generateReaction, type GeminiReport } from './gemini-commentary.js';
 import { cloudVoiceConfigured, speechModels, synthesizeCommentarySpeech, type VoiceCue, type VoiceDelivery, type VoiceReport } from './elevenlabs-commentary.js';
+import { configuredVoiceProfile, voiceProfiles } from './voice-profiles.js';
 import type { QueryResultRow } from 'pg';
 
 export type InnuendoIntensity = 1 | 2 | 3;
 export interface CommentarySettings {
  enabled:boolean;language:'en'|'hi';tone:'warm'|'energetic'|'playful';callsEvery:number;shoutoutsEvery:number;shoutoutMode:'mixed'|'leaders'|'few';announceWinners:boolean;
- familyFriendly:boolean;allowSexualReferences:boolean;innuendoIntensity:InnuendoIntensity;accent:'indian'|'us';voiceProvider:'browser'|'elevenlabs';voiceStyle:'standard'|'licensed';voiceDelivery:VoiceDelivery;
+ familyFriendly:boolean;allowSexualReferences:boolean;innuendoIntensity:InnuendoIntensity;accent:'indian'|'us';voiceProvider:'browser'|'elevenlabs';voiceStyle:'standard'|'licensed';voiceDelivery:VoiceDelivery;voiceProfile:string;
 }
-const defaults:CommentarySettings={enabled:false,language:'en',tone:'warm',callsEvery:1,shoutoutsEvery:5,shoutoutMode:'mixed',announceWinners:true,familyFriendly:true,allowSexualReferences:false,innuendoIntensity:1,accent:'indian',voiceProvider:'browser',voiceStyle:'standard',voiceDelivery:'fast'};
+const defaults:CommentarySettings={enabled:false,language:'en',tone:'warm',callsEvery:1,shoutoutsEvery:5,shoutoutMode:'mixed',announceWinners:true,familyFriendly:true,allowSexualReferences:false,innuendoIntensity:1,accent:'indian',voiceProvider:'browser',voiceStyle:'standard',voiceDelivery:'fast',voiceProfile:''};
 const uuid=(id:string)=>{if(!/^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(id))throw new BadRequestException('Invalid game ID');return id;};
 function boundedInt(v:unknown,min:number,max:number):v is number{return typeof v==='number'&&Number.isInteger(v)&&v>=min&&v<=max;}
 export function parseSettings(input:Record<string,unknown>):CommentarySettings {
@@ -19,6 +20,7 @@ export function parseSettings(input:Record<string,unknown>):CommentarySettings {
  if(!['hi','en'].includes(c.language)||!['warm','energetic','playful'].includes(c.tone)||!['mixed','leaders','few'].includes(c.shoutoutMode)||!['indian','us'].includes(c.accent)||!['browser','elevenlabs'].includes(c.voiceProvider)||!['standard','licensed'].includes(c.voiceStyle)||!boundedInt(c.callsEvery,1,10)||!boundedInt(c.shoutoutsEvery,0,30))throw new BadRequestException('Invalid commentary settings');
  if(!boundedInt(c.innuendoIntensity,1,3))throw new BadRequestException('Choose an innuendo intensity from 1 to 3');
  if(typeof c.voiceDelivery!=='string'||!Object.hasOwn(speechModels,c.voiceDelivery))throw new BadRequestException('Choose Fast or Expressive voice delivery');
+ if(typeof c.voiceProfile!=='string'||!/^(?:[a-z0-9-]{1,40})?$/.test(c.voiceProfile))throw new BadRequestException('Invalid announcer voice profile');
  if(c.familyFriendly&&c.allowSexualReferences)throw new BadRequestException('Turn off family friendly mode before enabling adults-only commentary');
  return c as CommentarySettings;
 }
@@ -76,16 +78,18 @@ const moodLines = {
 };
 
 function scriptedLine(f:Fact,c:CommentarySettings,withReaction:boolean):string {
+ const haryanvi=configuredVoiceProfile(c.voiceProfile,c.language)?.dialect==='haryanvi';
  if(f.kind==='WINNER'){
-  const result=c.language==='hi'?`${f.category} के विजेता ${f.name}!`:`${f.name} wins ${f.category}!`;
+  const result=haryanvi?`${f.name} नै ${f.category} जीत लिया!`:c.language==='hi'?`${f.category} के विजेता ${f.name}!`:`${f.name} wins ${f.category}!`;
   return withReaction?result:result+(c.language==='hi'?' ज़ोरदार तालियाँ!':' A round of applause!');
  }
  if(f.kind==='SHOUTOUT'){
   const hits=f.hits!, size=f.ticketSize!;
-  const progress=c.language==='hi'?`${f.name} के टिकट पर ${size} में से ${hits} नंबर आ चुके हैं।`:`${f.name} has matched ${hits} of ${size} numbers.`;
+  const progress=haryanvi?`${f.name} के टिकट पै ${size} में तै ${hits} नंबर आ लिए सैं।`:c.language==='hi'?`${f.name} के टिकट पर ${size} में से ${hits} नंबर आ चुके हैं।`:`${f.name} has matched ${hits} of ${size} numbers.`;
   if(withReaction)return progress;
   return progress+' '+moodLines[c.language][ticketMood(hits,size,Boolean(f.latestHit))];
  }
+ if(haryanvi)return `लो जी, इब निकल्या ${f.number}!`;
  if(withReaction)return c.language==='hi'?`इस बार निकला ${f.number}!`:`We've called ${f.number}!`;
  const variants=numberCalls[c.language];
  // Index by the announcement count so intervals like 5 don't repeat the same phrase.
@@ -111,7 +115,8 @@ function draftSettings(current:CommentarySettings,changes:unknown):CommentarySet
  if(changes===null||typeof changes!=='object'||Array.isArray(changes))throw new BadRequestException('Invalid commentary settings');
  if(Object.keys(changes).some(key=>!Object.hasOwn(defaults,key)))throw new BadRequestException('Unknown commentary setting');
  const settings=parseSettings({...current,...changes});
- if(settings.voiceStyle==='licensed'&&settings.voiceProvider!=='elevenlabs')throw new BadRequestException('Licensed voice requires cloud speech');
+ if(settings.voiceProfile&&(settings.voiceProvider!=='elevenlabs'||!configuredVoiceProfile(settings.voiceProfile,settings.language)))throw new BadRequestException('Choose an available cloud voice profile for this language');
+ if(!settings.voiceProfile&&settings.voiceStyle==='licensed'&&settings.voiceProvider!=='elevenlabs')throw new BadRequestException('Licensed voice requires cloud speech');
  return settings;
 }
 /** Grounded facts and stable event keys keep LLM latency away from number draws. */
@@ -121,22 +126,22 @@ export class CommentaryService {
  constructor(private readonly db:DatabaseService){}
  private async game(id:string):Promise<Game> {const g=(await this.db.query<Game>('SELECT id,status,emergency_stopped,next_number_sequence FROM games WHERE id=$1',[uuid(id)])).rows[0];if(!g)throw new NotFoundException('Game not found');return g;}
  async settings(id:string):Promise<CommentarySettings & {aiAvailable:boolean;voiceAvailable:boolean;licensedVoiceAvailable:boolean}> {
-  await this.game(id);const row=(await this.db.query<Record<string,unknown>&QueryResultRow>(`SELECT enabled,language,tone,shoutout_mode AS "shoutoutMode",calls_every AS "callsEvery",shoutouts_every AS "shoutoutsEvery",announce_winners AS "announceWinners",family_friendly AS "familyFriendly",allow_sexual_references AS "allowSexualReferences",innuendo_intensity AS "innuendoIntensity",accent,voice_provider AS "voiceProvider",voice_style AS "voiceStyle",voice_delivery AS "voiceDelivery" FROM game_commentary_settings WHERE game_id=$1`,[id])).rows[0];
+  await this.game(id);const row=(await this.db.query<Record<string,unknown>&QueryResultRow>(`SELECT enabled,language,tone,shoutout_mode AS "shoutoutMode",calls_every AS "callsEvery",shoutouts_every AS "shoutoutsEvery",announce_winners AS "announceWinners",family_friendly AS "familyFriendly",allow_sexual_references AS "allowSexualReferences",innuendo_intensity AS "innuendoIntensity",accent,voice_provider AS "voiceProvider",voice_style AS "voiceStyle",voice_delivery AS "voiceDelivery",voice_profile AS "voiceProfile" FROM game_commentary_settings WHERE game_id=$1`,[id])).rows[0];
   const c=parseSettings(row??{});return {...c,aiAvailable:Boolean(geminiKey()),voiceAvailable:cloudVoiceConfigured(c),licensedVoiceAvailable:Boolean(process.env.COMMENTARY_ELEVEN_VOICE_LICENSED)};
  }
  async adminSettings(id:string){
   const settings=await this.settings(id);
   const latest=(await this.db.query<LiveAnnouncement>(`SELECT kind,created_at AS at,gemini_report AS gemini,voice_report AS voice
    FROM game_commentary_events WHERE game_id=$1 AND status='READY' ORDER BY seq DESC LIMIT 1`,[id])).rows[0];
-  return {...settings,lastAnnouncement:latest??null};
+  return {...settings,voiceProfiles:voiceProfiles().map(({id,label,language})=>({id,label,language})),lastAnnouncement:latest??null};
  }
  async update(id:string,body:Record<string,unknown>){
   const c=draftSettings(await this.settings(id),body);
   if(c.voiceProvider==='elevenlabs'&&!cloudVoiceConfigured(c))throw new BadRequestException('The selected cloud voice has not been configured by the service owner');
-  await this.db.query(`INSERT INTO game_commentary_settings(game_id,enabled,language,tone,calls_every,shoutouts_every,shoutout_mode,announce_winners,family_friendly,allow_sexual_references,accent,voice_provider,voice_style,innuendo_intensity,voice_delivery)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-   ON CONFLICT(game_id) DO UPDATE SET enabled=$2,language=$3,tone=$4,calls_every=$5,shoutouts_every=$6,shoutout_mode=$7,announce_winners=$8,family_friendly=$9,allow_sexual_references=$10,accent=$11,voice_provider=$12,voice_style=$13,innuendo_intensity=$14,voice_delivery=$15,updated_at=NOW()`,
-   [id,c.enabled,c.language,c.tone,c.callsEvery,c.shoutoutsEvery,c.shoutoutMode,c.announceWinners,c.familyFriendly,c.allowSexualReferences,c.accent,c.voiceProvider,c.voiceStyle,c.innuendoIntensity,c.voiceDelivery]);
+  await this.db.query(`INSERT INTO game_commentary_settings(game_id,enabled,language,tone,calls_every,shoutouts_every,shoutout_mode,announce_winners,family_friendly,allow_sexual_references,accent,voice_provider,voice_style,innuendo_intensity,voice_delivery,voice_profile)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+   ON CONFLICT(game_id) DO UPDATE SET enabled=$2,language=$3,tone=$4,calls_every=$5,shoutouts_every=$6,shoutout_mode=$7,announce_winners=$8,family_friendly=$9,allow_sexual_references=$10,accent=$11,voice_provider=$12,voice_style=$13,innuendo_intensity=$14,voice_delivery=$15,voice_profile=$16,updated_at=NOW()`,
+   [id,c.enabled,c.language,c.tone,c.callsEvery,c.shoutoutsEvery,c.shoutoutMode,c.announceWinners,c.familyFriendly,c.allowSexualReferences,c.accent,c.voiceProvider,c.voiceStyle,c.innuendoIntensity,c.voiceDelivery,c.voiceProfile]);
   return this.adminSettings(id);
  }
 

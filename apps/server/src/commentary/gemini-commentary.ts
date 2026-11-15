@@ -1,3 +1,4 @@
+import { configuredVoiceProfile } from './voice-profiles.js';
 import type { CommentarySettings, InnuendoIntensity } from './commentary.service.js';
 
 const defaultModel = 'gemini-3.5-flash-lite';
@@ -58,7 +59,7 @@ async function rejection(response: Response): Promise<Status> {
 
 export async function generateReaction(
   facts: ReactionFacts,
-  settings: Pick<CommentarySettings, 'language' | 'tone' | 'familyFriendly' | 'allowSexualReferences' | 'innuendoIntensity'>,
+  settings: Pick<CommentarySettings, 'language' | 'tone' | 'familyFriendly' | 'allowSexualReferences' | 'innuendoIntensity' | 'voiceProfile'>,
 ): Promise<{report: GeminiReport; reaction: string | null}> {
   const key = geminiKey(), model = geminiModel();
   const failure = (status: Status, httpStatus?: number) => ({report: {status, model, httpStatus}, reaction: null});
@@ -69,7 +70,11 @@ export async function generateReaction(
   const audience = adult
     ? `For an adults-only audience: ${innuendoInstructions[settings.innuendoIntensity]} Keep the innuendo about the game and never sexualize or tease a person. Keep it non-explicit, with no descriptions of sexual acts or anatomy.`
     : settings.familyFriendly ? 'Keep the line suitable for children. No sexual references.' : 'No sexual references.';
-  const prompt = `Write one original reaction for a Tambola host, at most 16 words, with a ${settings.tone} tone, ${settings.language === 'hi' ? 'in natural Hindi using Devanagari' : 'in natural English'}. A short factual announcement comes just before your line. React to this specific moment with a playful image, suspense, or encouragement. Avoid stock phrases like “check your ticket” or “great energy.” For ticket progress, suggest how the moment might feel without claiming to know the player's emotions. Keep the situation accurate. Do not repeat or invent facts, names, numbers, prizes, or wins. No digits, profanity, harassment, or stereotypes. ${audience} Return only the reaction on one line.\nGame facts: ${JSON.stringify(facts)}`;
+  const language = settings.language === 'en' ? 'in natural English'
+    : configuredVoiceProfile(settings.voiceProfile, settings.language)?.dialect === 'haryanvi'
+      ? 'in accessible Haryanvi-inflected Hindi using Devanagari and natural local wording'
+      : 'in natural Hindi using Devanagari';
+  const prompt = `Write one original reaction for a Tambola host, at most 16 words, with a ${settings.tone} tone, ${language}. A short factual announcement comes just before your line. React to this specific moment with a playful image, suspense, or encouragement. Avoid stock phrases like “check your ticket” or “great energy.” For ticket progress, suggest how the moment might feel without claiming to know the player's emotions. Keep the situation accurate. Do not repeat or invent facts, names, numbers, prizes, or wins. No digits, profanity, harassment, or stereotypes. ${audience} Return only the reaction on one line.\nGame facts: ${JSON.stringify(facts)}`;
   const safetySettings = safetyCategories.map(category => ({
     category,
     threshold: category === 'HARM_CATEGORY_SEXUALLY_EXPLICIT' && !adult ? 'BLOCK_LOW_AND_ABOVE' : 'BLOCK_MEDIUM_AND_ABOVE',

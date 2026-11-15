@@ -81,3 +81,13 @@ at **Light** when adults-only commentary is enabled. All three levels use
 non-explicit wordplay about the game and keep the same Gemini safety filters
 and app text checks. If Gemini filters a reaction, the app plays the scripted
 announcement. Use a properly licensed voice ID for a featured celebrity voice.
+
+## Add named announcer voices
+
+Set `COMMENTARY_VOICE_PROFILES` in the API service's Render **Environment** settings or in the Raspberry Pi's `.env`. Supply a JSON array and use a different `id` for each voice. This example adds a Haryanvi announcer.
+
+```json
+[{"id":"haryanvi","label":"Hindi · Haryanvi","language":"hi","dialect":"haryanvi","voiceId":"YOUR_ELEVENLABS_VOICE_ID"}]
+```
+
+Use the voice ID from **My Voices** in ElevenLabs and redeploy. Select **Hindi**, **Cloud voice (ElevenLabs)** and **Hindi · Haryanvi** under **Announcer voice**. Preview a number call and a winner before saving. Each named entry is available only for its configured language. Use `hi` or `en` for `language`. Omit `dialect` for regular Hindi or English phrasing. The Haryanvi dialect uses regional phrasing while sending Hindi to ElevenLabs. The selected voice determines pronunciation and accent.

@@ -1,3 +1,4 @@
+import { configuredVoiceProfile } from './voice-profiles.js';
 import type { CommentarySettings } from './commentary.service.js';
 
 export const speechModels = {
@@ -16,9 +17,10 @@ export interface VoiceReport {
   httpStatus?: number;
 }
 
-type VoiceSettings = Pick<CommentarySettings, 'language' | 'accent' | 'voiceStyle' | 'voiceProvider' | 'voiceDelivery'>;
+type VoiceSettings = Pick<CommentarySettings, 'language' | 'accent' | 'voiceStyle' | 'voiceProvider' | 'voiceDelivery' | 'voiceProfile'>;
 
 function voiceId(settings: VoiceSettings): string | undefined {
+  if (settings.voiceProfile) return configuredVoiceProfile(settings.voiceProfile, settings.language)?.voiceId;
   const slot = settings.voiceStyle === 'licensed' ? 'LICENSED'
     : settings.language.toUpperCase() + '_' + (settings.accent === 'us' ? 'US' : 'IN');
   return process.env['COMMENTARY_ELEVEN_VOICE_' + slot]?.trim();

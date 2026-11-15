@@ -1,3 +1,4 @@
+import { COMMENTARY_VOICE_PROFILES_MIGRATION } from './migrations/017_commentary_voice_profiles.js';
 import { COMMENTARY_VOICE_DELIVERY_MIGRATION } from './migrations/016_commentary_voice_delivery.js';
 import { COMMENTARY_INNUENDO_MIGRATION } from './migrations/015_commentary_innuendo.js';
 import { COMMENTARY_DIAGNOSTICS_MIGRATION } from './migrations/014_commentary_diagnostics.js';
@@ -218,6 +219,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       if (!voiceDelivery.rowCount) {
         await client.query(COMMENTARY_VOICE_DELIVERY_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['016_commentary_voice_delivery']);
+      }
+      const voiceProfiles = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['017_commentary_voice_profiles']);
+      if (!voiceProfiles.rowCount) {
+        await client.query(COMMENTARY_VOICE_PROFILES_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['017_commentary_voice_profiles']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');
