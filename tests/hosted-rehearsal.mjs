@@ -53,6 +53,16 @@ try{
   await api(path,{method:'POST',body:{},expected:401});
  }
  assert.match((await api('/screen')).data,/six-character game code is for guests/);
+ const videoPath='/media/gameplay/overview-v1.mp4';
+ const header=await rawRequest(videoPath,{method:'HEAD'});
+ assert.equal(header.status,200);
+ assert.equal(header.headers.get('content-type'),'video/mp4');
+ const partial=await rawRequest(videoPath,{headers:{range:'bytes=0-31'}});
+ assert.equal(partial.status,206);
+ assert.match(partial.headers.get('content-range'),/^bytes 0-31\/[0-9]+$/);
+ assert.equal((await partial.arrayBuffer()).byteLength,32);
+ await api(videoPath,{method:'POST',body:{},expected:401});
+
  await api('/admin',{expected:302});await api('/games',{headers:{'x-admin-key':env.ADMIN_TOKEN},expected:401});
  await api('/auth/callback?code=bad&state=bad',{expected:401});
  await login('intruder@example.com',{},401);await login('alice@example.com',{email_verified:false},401);await login('alice@example.com',{nonce:'wrong'},401);await login('alice@example.com',{aud:'another-client'},401);await login('alice@example.com',{iss:'https://evil.example'},401);await login('alice@example.com',{exp:1},401);
@@ -125,6 +135,9 @@ try{
  const learner=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:360,height:800}});
  const lesson=await learner.newPage(),lessonErrors=[];
  lesson.on('pageerror',error=>lessonErrors.push(error.message));
+ const videoRequests=[];
+ lesson.on('request',request=>{if(new URL(request.url()).pathname===videoPath)videoRequests.push(request.url());});
+
  await lesson.goto(origin+'/');
  await lesson.getByRole('heading',{name:'Host Tambola on your TV.'}).waitFor();
  assert.ok(await lesson.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -132,6 +145,18 @@ try{
  await lesson.setViewportSize({width:1440,height:900});
  await lesson.screenshot({path:join(output,'launch-desktop.png'),fullPage:true});
  await lesson.setViewportSize({width:360,height:800});
+ const poster=lesson.locator('#watch-gameplay img');
+ await poster.evaluate(image=>image.decode());
+ const posterBox=await poster.boundingBox();
+ assert.ok(posterBox&&Math.abs(posterBox.width/posterBox.height-16/9)<0.02);
+ assert.deepEqual(videoRequests,[]);
+ await lesson.getByRole('button',{name:/Watch gameplay/}).click();
+ await lesson.waitForFunction(()=>document.querySelector('#gameplay-video').currentTime>.1);
+ const video=lesson.locator('#gameplay-video');
+ assert.equal(await video.evaluate(element=>element.duration),25);
+ assert.ok(videoRequests.length>0);
+ await video.evaluate(element=>element.pause());
+ await lesson.goto(origin+'/');
  await lesson.getByRole('link',{name:'Request host access',exact:true}).click();
  assert.equal(await lesson.getByRole('link',{name:'Request host access',exact:true}).getAttribute('href'),env.HOST_ACCESS_REQUEST_URL);
  await lesson.goBack();

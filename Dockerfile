@@ -17,6 +17,7 @@ COPY package.json package-lock.json ./
 COPY apps/server/package.json ./apps/server/package.json
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build --chown=node:node /workspace/apps/server/dist ./apps/server/dist
+COPY --from=build --chown=node:node /workspace/apps/server/public ./apps/server/public
 
 ENV NODE_ENV=production
 USER node

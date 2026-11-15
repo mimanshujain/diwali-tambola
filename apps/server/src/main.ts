@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import { fileURLToPath } from 'node:url';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { cloudMode, validateHosting } from './hosting/context.js';
 import { HostingService } from './hosting/hosting.service.js';
 import { NestFactory } from '@nestjs/core';
@@ -13,7 +15,7 @@ async function bootstrap(): Promise<void> {
   if (!cloudMode() && ((process.env.ADMIN_TOKEN?.length ?? 0) < 32 || /^(replace|change|your|example)/i.test(process.env.ADMIN_TOKEN ?? ''))) {
     console.warn('ADMIN_TOKEN is missing or short. Set a random token of at least 32 characters before hosting.');
   }
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log'],
   });
 
@@ -25,6 +27,12 @@ async function bootstrap(): Promise<void> {
     const hosting = app.get(HostingService);
     app.use((req: IncomingMessage, res: import('node:http').ServerResponse, next: () => void) => { void hosting.access(req,res,next); });
   } else app.use(adminRateLimit);
+  app.useStaticAssets(fileURLToPath(new URL('../public/gameplay/', import.meta.url)), {
+    prefix: '/media/gameplay/',
+    index: false,
+    immutable: true,
+    maxAge: '1y',
+  });
   const io = new Server(app.getHttpServer(), {
     path: '/socket.io', serveClient: true,
     transports: ['websocket', 'polling'],

@@ -39,16 +39,16 @@ input{border:1px solid #987c88;border-radius:8px;min-height:44px;background:#fff
 #code{text-transform:uppercase;letter-spacing:.1em}
 .caption{font-size:.86rem;color:var(--muted)}
 .kicker{font-size:.8rem;font-weight:750;letter-spacing:.045em;color:var(--accent)}
-.visual{margin:0;border-radius:18px;padding:clamp(12px,3.2vw,24px);background:#2a1b2d;color:#fff2e2;display:grid;gap:.85rem;box-shadow:0 18px 35px #412a3330}
-.visual strong{color:#ffcf89}
-.room-display{display:grid;grid-template-columns:minmax(0,.72fr) minmax(0,1fr);align-items:center;gap:10px;background:#39263c;padding:clamp(10px,2.4vw,17px);border:1px solid #71526a;border-radius:10px}
-.visual-number,.demo-number{font-size:clamp(2.7rem,8vw,4.7rem);line-height:1.04;font-weight:800;font-variant-numeric:tabular-nums;font-family:Georgia,serif}
-.visual-number{color:var(--gold)}
-.mini-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;text-align:center;font-size:.7rem;font-weight:650}
-.mini-board span{border:1px solid #6b5064;border-radius:4px;padding:3px 0}
-.mini-board .selected{background:var(--gold);color:var(--ink);border-color:var(--gold)}
-.phone-ticket{display:grid;gap:.4rem;padding:9px 11px 11px;background:#fff8eb;color:var(--ink);border-radius:8px}
-.phone-ticket strong{color:var(--ink);font-size:.78rem}
+ .gameplay-preview{margin:0;min-width:0;border:1px solid #6a4d61;border-radius:16px;overflow:hidden;background:#2a1b2d;box-shadow:0 16px 34px #412a3330}
+ .gameplay-preview video,.gameplay-preview img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;background:#2a1b2d}
+ .clip-poster{position:relative;display:block;width:100%;border:0;padding:0;background:#2a1b2d;color:#fff2e4;text-align:left;cursor:pointer}
+ .clip-poster:focus-visible{outline-offset:-4px;outline-color:#fbd790}
+ .clip-label{display:flex;align-items:center;gap:.65rem;padding:.68rem .9rem}
+ .clip-label small{margin-left:auto;color:#ead8dd;font-size:.82rem}
+ .clip-play{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:50%;background:var(--gold);color:#2a1b2d;font-size:.88rem}
+ .clip-play::before{content:'';margin-left:2px;width:0;height:0;border-block:6px solid transparent;border-left:9px solid currentColor}
+ .clip-poster:hover .clip-play{background:#ffe0a3}
+ .clip-message{padding:.7rem .9rem;color:#f6dfdf}.clip-message a{color:#fbe1a4}
 .learn-ticket{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:clamp(2px,.8vw,5px);font-variant-numeric:tabular-nums}
 .learn-cell{display:grid;place-items:center;min-width:0;aspect-ratio:1.1;border:1px solid #ddcabc;border-radius:4px;background:#fffdf8;color:#38273b;font-weight:750;font-size:clamp(.65rem,2.9vw,1.13rem)}
 .learn-cell.blank{background:#ede3d7;border-color:transparent}
@@ -58,7 +58,7 @@ input{border:1px solid #987c88;border-radius:8px;min-height:44px;background:#fff
 .page-heading h1{font-size:clamp(2.2rem,5.5vw,4rem);max-width:22ch}
 .practice-board{background:#322137;color:#fff1e4;border-color:#654b64}
 .practice-board .caption{color:#edd6dc}
-.demo-number{color:var(--gold)}
+.demo-number{color:var(--gold);font-size:clamp(2.7rem,8vw,4.7rem);line-height:1.04;font-weight:800;font-variant-numeric:tabular-nums;font-family:Georgia,serif}
 .call-history{display:flex;gap:6px;flex-wrap:wrap;margin:0;padding:0;list-style:none}
 .call-history li{display:grid;place-items:center;padding:.16rem .4rem;min-width:1.9rem;font-size:.86rem;border:1px solid #8c7389;border-radius:5px}
 .call-history li:last-child{background:var(--gold);color:var(--ink);border-color:var(--gold)}
@@ -117,20 +117,34 @@ form.addEventListener('submit',event=>{
  const code=document.getElementById('code').value.trim().toUpperCase();
  location.href='/g/'+encodeURIComponent(code);
 });
+const watch=document.getElementById('watch-gameplay'),video=document.getElementById('gameplay-video');
+watch.addEventListener('click',()=>{
+ watch.hidden=true;
+ video.hidden=false;
+ video.src=video.dataset.src;
+ video.focus();
+ video.play()?.catch(()=>{});
+});
+video.addEventListener('error',()=>{document.getElementById('gameplay-error').hidden=false;});
 `;
 
 export function renderLaunchPage(): string {
   const requestLabel = hostRequestUrl() ? 'Request host access' : 'How to host';
-  const board = Array.from({length:15},(_,index)=>index+35)
-    .map(number=>`<span${number===42?' class="selected"':''}>${number}</span>`).join('');
+
   return publicPage('Host Tambola on your TV','A live Tambola and Housie game for parties. Try a practice round, then invite guests to scan a QR code and play on their phones.',`
   <section class="hero">
    <div class="hero-copy"><h1>Host Tambola on your TV.</h1><p class="lead">Guests scan a QR code and play on their phones. Tambola, also called Housie, is a 90-ball bingo-style game for birthdays, Diwali, and nights with friends.</p>
     <div class="actions"><a class="button" href="/practice">Try a practice round</a><a class="button secondary" href="/host">${requestLabel}</a></div>
    </div>
-   <figure class="visual" aria-label="Example TV board and player ticket">
-     <div class="room-display"><div><strong>TV board</strong><div class="visual-number">42</div><span>Latest call</span></div><div class="mini-board" aria-hidden="true">${board}</div></div>
-     <div class="phone-ticket"><strong>Ticket on a guest’s phone · 3 matches</strong>${renderTicket([22,34,42],'Sample ticket',true)}</div>
+   <figure class="gameplay-preview" aria-label="Tambola gameplay walkthrough">
+     <button class="clip-poster" type="button" id="watch-gameplay" aria-controls="gameplay-video">
+       <img src="/media/gameplay/overview-v1.jpg" alt="" width="960" height="540">
+       <span class="clip-label"><span class="clip-play" aria-hidden="true"></span><strong>Watch gameplay</strong><small>25 sec</small></span>
+     </button>
+     <video id="gameplay-video" controls playsinline preload="none" hidden tabindex="0" aria-label="Tambola gameplay video" aria-describedby="gameplay-transcript" data-src="/media/gameplay/overview-v1.mp4"></video>
+     <p id="gameplay-transcript" class="sr-only">A guest scans the TV QR, enters their name, and gets a ticket. Numbers called on the TV highlight matching numbers on the phone. At five matches the ticket qualifies for Early Five, and the host checks and confirms the prize.</p>
+     <p class="clip-message" id="gameplay-error" role="status" hidden>Playback is unavailable. <a href="/media/gameplay/overview-v1.mp4">Open the video file</a>.</p>
+     <noscript><p class="clip-message"><a href="/media/gameplay/overview-v1.mp4">Watch the 25-second gameplay video</a></p></noscript>
    </figure>
   </section>
   <div class="home-grid">
