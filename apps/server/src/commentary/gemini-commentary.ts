@@ -6,7 +6,7 @@ const blockedReasons = new Set(['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED
 const safetyCategories = ['HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_DANGEROUS_CONTENT'];
 const explicit = /\b(?:fuck\w*|shit\w*|porn\w*|nude|naked|rape\w*)\b|अश्लील|नग्न|शारीरिक संबंध|बलात्कार/i;
 const sexual = /\b(?:sex\w*|kiss\w*|bedroom|hook[ -]?up|foreplay|turn[ -]on)\b|सेक्स|चुंबन|चुम्बन|चूम/i;
-const innuendoInstructions: Record<InnuendoIntensity, string> = {
+const innuendoInstructions: Record<Exclude<InnuendoIntensity, 4>, string> = {
   1: 'Use a subtle wink or mild double meaning only when it fits the moment.',
   2: 'Aim for a cheeky double entendre. Give the game action an easily recognized suggestive second meaning.',
   3: 'Make a bold, unmistakably suggestive double entendre the punchline of this reaction. Use risqué wordplay or flirtatious tension about the game instead of a generic cheer.',
@@ -67,8 +67,9 @@ export async function generateReaction(
   if (!model) return failure('invalid_model');
 
   const adult = !settings.familyFriendly && settings.allowSexualReferences;
+  const intensity = settings.innuendoIntensity === 4 ? 3 : settings.innuendoIntensity;
   const audience = adult
-    ? `For an adults-only audience: ${innuendoInstructions[settings.innuendoIntensity]} Keep the innuendo about the game and never sexualize or tease a person. Keep it non-explicit, with no descriptions of sexual acts or anatomy.`
+    ? `For an adults-only audience: ${innuendoInstructions[intensity]} Keep the innuendo about the game and never sexualize or tease a person. Keep it non-explicit, with no descriptions of sexual acts or anatomy.`
     : settings.familyFriendly ? 'Keep the line suitable for children. No sexual references.' : 'No sexual references.';
   const language = settings.language === 'en' ? 'in natural English'
     : configuredVoiceProfile(settings.voiceProfile, settings.language)?.dialect === 'haryanvi'

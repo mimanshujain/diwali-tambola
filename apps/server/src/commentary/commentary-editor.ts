@@ -8,6 +8,7 @@ const innuendoLevels = [
  {label:'Light',description:'A subtle double meaning when it fits.'},
  {label:'Cheeky',description:'A suggestive second meaning that’s easy to catch.'},
  {label:'Bold',description:'A clearly suggestive punchline about the game.'},
+ {label:'After Dark',description:'Rotating, sharply suggestive punchlines about the ball, board and tickets. Preview them before saving.'},
 ];
 
 export const commentaryFields=String.raw`
@@ -25,7 +26,7 @@ export const commentaryFields=String.raw`
  <label class="row"><input id="commentary-family" type="checkbox" style="width:auto"> Family friendly (default; no sexual references)</label>
  <label class="row"><input id="commentary-adult" type="checkbox" style="width:auto" aria-controls="commentary-innuendo-controls"> Allow sexual innuendo (adults only)</label>
  <div id="commentary-innuendo-controls" class="toolbar" hidden>
-  <div class="row between"><label for="commentary-innuendo">Innuendo intensity</label><strong id="commentary-innuendo-value">1 of 3 · Light</strong></div>
+  <div class="row between"><label for="commentary-innuendo">Innuendo intensity</label><strong id="commentary-innuendo-value">1 of ${innuendoLevels.length} · Light</strong></div>
   <input id="commentary-innuendo" type="range" min="1" max="${innuendoLevels.length}" step="1" value="1" disabled aria-valuetext="1 of ${innuendoLevels.length}, Light" aria-describedby="commentary-innuendo-description" style="accent-color:var(--occasion-accent)">
   <div class="row between small" aria-hidden="true">${innuendoLevels.map(level=>'<span>'+level.label+'</span>').join('')}</div>
   <p id="commentary-innuendo-description" class="small" style="margin:8px 0 0">${innuendoLevels[0].description}</p>
@@ -42,7 +43,7 @@ export const commentaryFields=String.raw`
  <div id="commentary-preview" class="toolbar" hidden>
   <p id="commentary-preview-audience" class="small"></p>
   <div><strong>Game announcement</strong><p id="commentary-preview-script"></p></div>
-  <div id="commentary-preview-generated" hidden><strong>Gemini reaction</strong><p id="commentary-preview-reaction"></p></div>
+  <div id="commentary-preview-generated" hidden><strong id="commentary-preview-reaction-title">Gemini reaction</strong><p id="commentary-preview-reaction"></p></div>
   <p id="commentary-preview-voice" class="small" role="status"></p>
   <audio id="commentary-preview-audio" controls preload="none" aria-label="Cloud voice preview" style="width:100%" hidden></audio>
   <button id="commentary-preview-speak" class="ghost" type="button" hidden>Play browser preview</button>
@@ -71,6 +72,7 @@ const geminiReasons={
 };
 function geminiSummary(report){
  if(!report)return 'Source unavailable for older announcements.';
+ if(report.status==='after_dark')return 'After Dark · Rotating game punchline';
  const model=report.model?' ('+report.model+')':'';
  if(report.status==='generated')return 'Gemini'+model+' added a reaction.';
  const reason=report.httpStatus===402?'payment_required':report.status;
@@ -105,8 +107,8 @@ function updateInnuendoControl(){
  const value=Number(innuendoMeter.value),level=innuendoLevels[value-1];
  $('#commentary-innuendo-controls').hidden=!active;
  innuendoMeter.disabled=!active;
- innuendoMeter.setAttribute('aria-valuetext',value+' of 3, '+level.label);
- $('#commentary-innuendo-value').textContent=value+' of 3 · '+level.label;
+ innuendoMeter.setAttribute('aria-valuetext',value+' of '+innuendoLevels.length+', '+level.label);
+ $('#commentary-innuendo-value').textContent=value+' of '+innuendoLevels.length+' · '+level.label;
  $('#commentary-innuendo-description').textContent=level.description;
 }
 function fillCommentary(c){
@@ -162,6 +164,7 @@ function showPreview(result,settings){
  $('#commentary-preview-audience').textContent=settings.familyFriendly?'Family friendly':settings.allowSexualReferences?'Adults only · '+innuendoLevels[settings.innuendoIntensity-1].label+' innuendo':'No sexual references';
  $('#commentary-preview-script').textContent=result.script;
  $('#commentary-preview-generated').hidden=!result.reaction;
+ $('#commentary-preview-reaction-title').textContent=result.gemini?.status==='after_dark'?'After Dark punchline':'Gemini reaction';
  $('#commentary-preview-reaction').textContent=result.reaction||'';
  const voice=result.voice;
  previewVoice.textContent=voiceSummary(voice,true);

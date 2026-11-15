@@ -1,3 +1,4 @@
+import { COMMENTARY_AFTER_DARK_MIGRATION } from './migrations/018_commentary_after_dark.js';
 import { COMMENTARY_VOICE_PROFILES_MIGRATION } from './migrations/017_commentary_voice_profiles.js';
 import { COMMENTARY_VOICE_DELIVERY_MIGRATION } from './migrations/016_commentary_voice_delivery.js';
 import { COMMENTARY_INNUENDO_MIGRATION } from './migrations/015_commentary_innuendo.js';
@@ -224,6 +225,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       if (!voiceProfiles.rowCount) {
         await client.query(COMMENTARY_VOICE_PROFILES_MIGRATION);
         await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['017_commentary_voice_profiles']);
+      }
+      const afterDark = await client.query('SELECT 1 FROM schema_migrations WHERE migration_id=$1', ['018_commentary_after_dark']);
+      if (!afterDark.rowCount) {
+        await client.query(COMMENTARY_AFTER_DARK_MIGRATION);
+        await client.query('INSERT INTO schema_migrations(migration_id) VALUES ($1)', ['018_commentary_after_dark']);
       }
       await client.query('COMMIT');
       console.log('Database migrations are up to date.');

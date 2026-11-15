@@ -19,7 +19,7 @@ test('commentary rejects adult references under family mode',()=>{
  assert.equal(parseSettings({language:'hi',accent:'indian'}).language,'hi');
  assert.throws(()=>parseSettings({callsEvery:0}),/Invalid commentary/);
  assert.equal(parseSettings({familyFriendly:false,allowSexualReferences:true}).innuendoIntensity,1);
- for(const invalid of [0,4,1.5,'3',null])assert.throws(()=>parseSettings({innuendoIntensity:invalid}),/intensity from 1 to 3/);
+ for(const invalid of [0,5,1.5,'3',null])assert.throws(()=>parseSettings({innuendoIntensity:invalid}),/intensity from 1 to 4/);
 });
 test('Gemini writes a grounded Hindi reaction without sending player names',async t=>{
  const reaction='लगता है किस्मत ने अब ढोल बजाना शुरू कर दिया है!';
@@ -78,6 +78,27 @@ test('Gemini receives distinct directions for each adults-only intensity',async 
   assert.doesNotMatch(prompt,/Private Player/);
   assert.deepEqual(filters[i],filters[0]);
  }
+});
+test('After Dark rotates prepared, localized punchlines and requires adults-only opt-in',async t=>{
+ const profiles=JSON.stringify([{id:'haryanvi',label:'Hindi · Haryanvi',language:'hi',dialect:'haryanvi',voiceId:'test-voice'}]);
+ const fetch=mockProvider(t,{COMMENTARY_VOICE_PROFILES:profiles,GEMINI_API_KEY:'test-only-key'},async()=>answer('A little suspense keeps the game lively!'));
+ const service=new CommentaryService({});
+ const adult={familyFriendly:false,allowSexualReferences:true,innuendoIntensity:4};
+ const number={key:'number:1',kind:'NUMBER',number:42,sequence:1};
+ const english=await service.compose(number,parseSettings(adult),0);
+ const next=await service.compose(number,parseSettings(adult),1);
+ assert.match(english.script,/42/);
+ assert.notEqual(english.reaction,next.reaction);
+ assert.deepEqual(english.gemini,{status:'after_dark',model:null});
+ const hindi=await service.compose(number,parseSettings({...adult,language:'hi'}),0);
+ assert.match(hindi.reaction,/ज़रा धीरे/);
+ const haryanvi=await service.compose(number,parseSettings({...adult,language:'hi',voiceProfile:'haryanvi',voiceProvider:'elevenlabs'}),0);
+ assert.match(haryanvi.reaction,/बोल्या/);
+ assert.match(haryanvi.script,/इब निकल्या 42/);
+ assert.equal(fetch.mock.callCount(),0);
+ const family=await service.compose(number,parseSettings({innuendoIntensity:4}),0);
+ assert.equal(family.gemini.status,'generated');
+ assert.equal(fetch.mock.callCount(),1);
 });
 test('Gemini errors are actionable without exposing provider response text',async t=>{
  const cases=[

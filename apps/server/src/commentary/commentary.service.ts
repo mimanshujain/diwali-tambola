@@ -3,10 +3,12 @@ import { DatabaseService } from '../database/database.service.js';
 import { hostId } from '../hosting/context.js';
 import { geminiKey, generateReaction, type GeminiReport } from './gemini-commentary.js';
 import { cloudVoiceConfigured, speechModels, synthesizeCommentarySpeech, type VoiceCue, type VoiceDelivery, type VoiceReport } from './elevenlabs-commentary.js';
+import { afterDarkEnabled, afterDarkPunchline } from './after-dark.js';
 import { configuredVoiceProfile, voiceProfiles } from './voice-profiles.js';
 import type { QueryResultRow } from 'pg';
 
-export type InnuendoIntensity = 1 | 2 | 3;
+export type InnuendoIntensity = 1 | 2 | 3 | 4;
+type TextReport = GeminiReport | {status:'after_dark';model:null};
 export interface CommentarySettings {
  enabled:boolean;language:'en'|'hi';tone:'warm'|'energetic'|'playful';callsEvery:number;shoutoutsEvery:number;shoutoutMode:'mixed'|'leaders'|'few';announceWinners:boolean;
  familyFriendly:boolean;allowSexualReferences:boolean;innuendoIntensity:InnuendoIntensity;accent:'indian'|'us';voiceProvider:'browser'|'elevenlabs';voiceStyle:'standard'|'licensed';voiceDelivery:VoiceDelivery;voiceProfile:string;
@@ -18,7 +20,7 @@ export function parseSettings(input:Record<string,unknown>):CommentarySettings {
  const c={...defaults,...input};
  for(const k of ['enabled','announceWinners','familyFriendly','allowSexualReferences'] as const)if(typeof c[k]!=='boolean')throw new BadRequestException(`Invalid ${k}`);
  if(!['hi','en'].includes(c.language)||!['warm','energetic','playful'].includes(c.tone)||!['mixed','leaders','few'].includes(c.shoutoutMode)||!['indian','us'].includes(c.accent)||!['browser','elevenlabs'].includes(c.voiceProvider)||!['standard','licensed'].includes(c.voiceStyle)||!boundedInt(c.callsEvery,1,10)||!boundedInt(c.shoutoutsEvery,0,30))throw new BadRequestException('Invalid commentary settings');
- if(!boundedInt(c.innuendoIntensity,1,3))throw new BadRequestException('Choose an innuendo intensity from 1 to 3');
+ if(!boundedInt(c.innuendoIntensity,1,4))throw new BadRequestException('Choose an innuendo intensity from 1 to 4');
  if(typeof c.voiceDelivery!=='string'||!Object.hasOwn(speechModels,c.voiceDelivery))throw new BadRequestException('Choose Fast or Expressive voice delivery');
  if(typeof c.voiceProfile!=='string'||!/^(?:[a-z0-9-]{1,40})?$/.test(c.voiceProfile))throw new BadRequestException('Invalid announcer voice profile');
  if(c.familyFriendly&&c.allowSexualReferences)throw new BadRequestException('Turn off family friendly mode before enabling adults-only commentary');
@@ -27,7 +29,7 @@ export function parseSettings(input:Record<string,unknown>):CommentarySettings {
 interface Game extends QueryResultRow {id:string;status:string;emergency_stopped:boolean;next_number_sequence:number;}
 interface Event extends QueryResultRow {seq:string;game_id:string;event_key:string;kind:'NUMBER'|'WINNER'|'SHOUTOUT';language:'en'|'hi';text:string;status:string;lease_until:Date;audio:Buffer|null;}
 interface Fact {key:string;kind:Event['kind'];number?:number;name?:string;category?:string;hits?:number;ticketSize?:number;latestHit?:boolean;sequence:number;}
-export interface LiveAnnouncement extends QueryResultRow {kind:Event['kind']; at:Date; gemini:GeminiReport|null; voice:VoiceReport|null;}
+export interface LiveAnnouncement extends QueryResultRow {kind:Event['kind']; at:Date; gemini:TextReport|null; voice:VoiceReport|null;}
 const numberCalls = {
  en: [
   (n:number)=>`Here comes ${n}! See if it’s on your ticket.`,
@@ -149,13 +151,13 @@ export class CommentaryService {
  async preview(id:string,body:Record<string,unknown>){
   const settings=draftSettings(await this.settings(id),body.settings===undefined?{}:body.settings);
   const fact=sampleFact(body.scenario,body.number,settings);
-  this.reservePreview();
-  const line=await this.compose(fact,settings);
+  const previewIndex=this.reservePreview();
+  const line=await this.compose(fact,settings,previewIndex);
   const {audio,...voice}=await synthesizeCommentarySpeech(line.text,settings,voiceCue(fact,settings.tone),'preview');
   return {...line,voice:{...voice,audio:audio?.toString('base64')??null}};
  }
 
- private reservePreview():void {
+ private reservePreview():number {
   const host=hostId()??'lan',now=Date.now();
   let budget=this.previews.get(host);
   if(!budget||budget.until<=now){
@@ -165,18 +167,21 @@ export class CommentaryService {
    this.previews.set(host,budget);
   }
   if(budget.count>=10)throw new HttpException('Preview limit reached. Try again in a minute.',HttpStatus.TOO_MANY_REQUESTS);
-  budget.count++;
+  return budget.count++;
  }
  /** TV poll. At most one provider job is started per poll and game; every event is unique and durable. */
- async poll(id:string,afterRaw:unknown):Promise<{settings:CommentarySettings;halted:boolean;events:{seq:number;kind:string;text:string;audio:boolean}[]}> {
+ async poll(id:string,afterRaw:unknown):Promise<{settings:CommentarySettings;halted:boolean;events:{seq:number;kind:string;text:string;audio:boolean;afterDark:boolean}[]}> {
   const game=await this.game(id),settings=await this.settings(id),after=Number(afterRaw??0);
   if(!Number.isSafeInteger(after)||after<0)throw new BadRequestException('Invalid cursor');
   if(settings.enabled&&game.status!=='CREATED'&&!game.emergency_stopped) {
    const fact=await this.chooseFact(id,game,settings);
    if(fact){const claimed=await this.claim(id,fact,settings);if(claimed)void this.produce(id,claimed,fact,settings).catch(e=>console.warn('Commentary generation failed',e instanceof Error?e.message:'unknown error'));}
   }
-  const rows=(await this.db.query<Event>(`SELECT seq,kind,text,audio IS NOT NULL AS has_audio FROM game_commentary_events WHERE game_id=$1 AND status='READY' AND seq>$2 AND language=$3 ORDER BY seq DESC LIMIT 12`,[id,after,settings.language])).rows.reverse();
-  return {settings,halted:game.emergency_stopped,events:rows.map(r=>({seq:Number(r.seq),kind:r.kind,text:r.text,audio:Boolean((r as Event&{has_audio:boolean}).has_audio)}))};
+  const rows=(await this.db.query<Event & {has_audio:boolean;after_dark:boolean}>(`SELECT seq,kind,text,audio IS NOT NULL AS has_audio,
+   (gemini_report->>'status') IS NOT DISTINCT FROM 'after_dark' AS after_dark
+   FROM game_commentary_events WHERE game_id=$1 AND status='READY' AND seq>$2 AND language=$3
+   AND ($4 OR (gemini_report->>'status') IS DISTINCT FROM 'after_dark') ORDER BY seq DESC LIMIT 12`,[id,after,settings.language,afterDarkEnabled(settings)])).rows.reverse();
+  return {settings,halted:game.emergency_stopped,events:rows.map(r=>({seq:Number(r.seq),kind:r.kind,text:r.text,audio:r.has_audio,afterDark:r.after_dark}))};
  }
  private async chooseFact(id:string,game:Game,c:CommentarySettings):Promise<Fact|null> {
   // Declared winners, not provisional claimants; catch late confirmations after the next draw.
@@ -205,19 +210,27 @@ export class CommentaryService {
   });
  }
  private async produce(id:string,event:Event,f:Fact,c:CommentarySettings):Promise<void>{
-  const line=await this.compose(f,c);
+  const line=await this.compose(f,c,Number(event.seq));
   const {audio,...voice}=await synthesizeCommentarySpeech(line.text,c,voiceCue(f,c.tone));
-  if(line.gemini.status!=='generated'&&line.gemini.status!=='no_key')console.warn('Commentary Gemini fallback',line.gemini);
+  if(line.gemini.status!=='generated'&&line.gemini.status!=='no_key'&&line.gemini.status!=='after_dark')console.warn('Commentary Gemini fallback',line.gemini);
   if(c.voiceProvider==='elevenlabs'&&voice.status!=='generated')console.warn('Commentary cloud voice fallback',voice);
   await this.db.query("UPDATE game_commentary_events SET status='READY',text=$3,audio=$4,gemini_report=$5,voice_report=$6 WHERE game_id=$1 AND seq=$2 AND status='PROCESSING'",[id,event.seq,line.text,audio??null,line.gemini,voice]);
  }
- private async compose(f:Fact,c:CommentarySettings){
+ private async compose(f:Fact,c:CommentarySettings,variant=f.sequence):Promise<{text:string;script:string;reaction:string|null;gemini:TextReport}>{
+  if(afterDarkEnabled(c)){
+   const script=scriptedLine(f,c,true),reaction=afterDarkPunchline(c,f.kind,variant);
+   return {text:script+' '+reaction,script,reaction,gemini:{status:'after_dark',model:null}};
+  }
   const {report, reaction}=await generateReaction({event:f.kind,number:f.number,calledOnTicket:f.hits,ticketSize:f.ticketSize,latestCallMatched:f.latestHit,callIndex:f.sequence},c);
   const script=scriptedLine(f,c,reaction!==null);
   return {text:reaction?script+' '+reaction:script,script,reaction,gemini:report};
  }
  async audio(id:string,seqRaw:string):Promise<Buffer>{
   await this.game(id);const seq=Number(seqRaw);if(!Number.isSafeInteger(seq)||seq<1)throw new BadRequestException('Invalid commentary ID');
-  const event=(await this.db.query<{audio:Buffer|null}&QueryResultRow>("SELECT audio FROM game_commentary_events WHERE game_id=$1 AND seq=$2 AND status='READY'",[id,seq])).rows[0];if(!event?.audio)throw new NotFoundException('Audio unavailable');return event.audio;
+  const event=(await this.db.query<{audio:Buffer|null;after_dark:boolean}&QueryResultRow>(`SELECT audio,
+   (gemini_report->>'status') IS NOT DISTINCT FROM 'after_dark' AS after_dark
+   FROM game_commentary_events WHERE game_id=$1 AND seq=$2 AND status='READY'`,[id,seq])).rows[0];
+  if(!event?.audio||(event.after_dark&&!afterDarkEnabled(await this.settings(id))))throw new NotFoundException('Audio unavailable');
+  return event.audio;
  }
 }
