@@ -187,6 +187,9 @@ try{
  console.log('PASS public homepage, host invitation, practice round and illustrated rules in mobile and desktop browsers');
  const host=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844}});await host.addCookies([{name:'__Host-tambola-host',value:cookieToken,url:origin,secure:true,httpOnly:true,sameSite:'Lax'}]);
  const page=await host.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const hostVideoRequests=[];
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/media/gameplay/host-v1.mp4')hostVideoRequests.push(request.url());});
+
  // Identity and logout must be available without a second profile request.
  await page.route('**/auth/me',route=>route.abort());
  async function checkHostAccount(path){
@@ -199,6 +202,18 @@ try{
   assert.ok(signOut&&signOut.y>=0&&signOut.y+signOut.height<=844,'Sign out must be visible without scrolling');
  }
  await checkHostAccount('/admin');await page.waitForSelector('.game-card');assert.equal(await page.locator('.game-card').count(),1);assert.equal(await page.locator('#key').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(output,'host-phone.png'),fullPage:true});
+ const hostGuide=page.getByRole('dialog',{name:'Host walkthrough'});
+ await page.getByRole('button',{name:'Host guide',exact:true}).click();
+ await hostGuide.getByRole('button',{name:/Watch host walkthrough/}).waitFor();
+ assert.deepEqual(hostVideoRequests,[]);
+ await hostGuide.getByRole('button',{name:/Review a claim/}).click();
+ await page.waitForFunction(()=>{const video=document.querySelector('#host-walkthrough-video');return video.currentTime>35.03&&!video.paused&&!video.seeking;});
+ assert.equal(await page.locator('#host-walkthrough-video').evaluate(video=>video.duration),48);
+ assert.ok(hostVideoRequests.length>0);
+ assert.ok(await hostGuide.evaluate(dialog=>dialog.scrollWidth<=dialog.clientWidth));
+ await hostGuide.getByRole('button',{name:'Close',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#host-walkthrough-video').paused);
+ assert.equal(await hostGuide.isVisible(),false);
  await page.goto(origin+'/admin/'+id);
  await page.getByText('First game checklist',{exact:true}).waitFor();
  await page.getByRole('link',{name:'Choose prizes',exact:true}).click();
@@ -259,6 +274,13 @@ try{
  const callNumber=number=>api('/games/'+id+'/calls/manual',{cookie:alice,method:'POST',body:{number},expected:201});
  const liveSettings=async()=>(await api(commentary+'/admin/settings',{cookie:alice})).data;
  await api('/games/'+id+'/start',{cookie:alice,method:'POST',expected:201});
+ await page.getByRole('button',{name:'Host guide',exact:true}).click();
+ await hostGuide.getByRole('heading',{name:'Host walkthrough'}).waitFor();
+ await page.keyboard.press('Escape');
+ await hostGuide.waitFor({state:'hidden'});
+ assert.equal((await api('/games/'+id,{cookie:alice})).data.status,'RUNNING');
+ console.log('PASS host walkthrough chapter seek, close and active-round access');
+
  await callNumber(42);
  await tv.getByTitle('Last narration voice · ElevenLabs',{exact:true}).waitFor();
  const line=(await api(commentary,{cookie:alice})).data.events.find(event=>event.kind==='NUMBER');
