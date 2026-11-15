@@ -146,7 +146,7 @@ export class CommentaryService {
   const fact=sampleFact(body.scenario,body.number,settings);
   this.reservePreview();
   const line=await this.compose(fact,settings);
-  const {audio,...voice}=await synthesizeCommentarySpeech(line.text,settings,voiceCue(fact,settings.tone));
+  const {audio,...voice}=await synthesizeCommentarySpeech(line.text,settings,voiceCue(fact,settings.tone),'preview');
   return {...line,voice:{...voice,audio:audio?.toString('base64')??null}};
  }
 

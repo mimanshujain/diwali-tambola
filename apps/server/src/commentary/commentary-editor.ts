@@ -1,4 +1,8 @@
 import { browserVoiceJs } from './browser-voice.js';
+import { PREVIEW_VOICE_TIMEOUT_MS } from './elevenlabs-commentary.js';
+
+// Allow the voice request to follow Gemini (up to 5.5 seconds), with room for the API round trip.
+const previewRequestTimeoutMs = PREVIEW_VOICE_TIMEOUT_MS + 10_000;
 
 const innuendoLevels = [
  {label:'Light',description:'A subtle double meaning when it fits.'},
@@ -76,7 +80,7 @@ function voiceSummary(voice,preview=false){
  if(voice.status==='browser')return preview?'This preview uses the browser voice on this device.':'TV browser voice selected.';
  const model=voice.model==='eleven_v3'?'Eleven v3':'Flash v2.5';
  if(voice.status==='generated')return preview?'ElevenLabs audio is ready to play · '+model:'ElevenLabs audio generated · '+model;
- const reason={voice_unconfigured:'The selected ElevenLabs voice or key is missing.',timeout:'ElevenLabs timed out.',unavailable:'ElevenLabs returned no playable audio.'};
+ const reason={voice_unconfigured:'The selected ElevenLabs voice or key is missing.',timeout:preview?'ElevenLabs did not return audio within ${PREVIEW_VOICE_TIMEOUT_MS / 1000} seconds. Try again or preview with Fast delivery.':'ElevenLabs timed out.',unavailable:'ElevenLabs returned no playable audio.'};
  const hint={401:'Check the key, Text to Speech permission, and plan access to the voice.',402:'Check the ElevenLabs plan and available credits.',403:'Check the key’s Text to Speech permission and voice access.',404:'Check the configured ElevenLabs voice ID.',429:'Check ElevenLabs usage and request limits.'};
  const failed=voice.status==='rejected'?'ElevenLabs rejected the request (HTTP '+voice.httpStatus+'). '+(hint[voice.httpStatus]||'Check voice and model access in ElevenLabs.'):(reason[voice.status]||'ElevenLabs audio unavailable.');
  return failed+' '+(preview?'You can play the browser preview on this device.':'The TV can use its browser voice.');
@@ -172,9 +176,9 @@ previewButton.onclick=()=>run(previewButton,async()=>{
  const scenario=$('#commentary-scenario').value,number=$('#commentary-test-number');
  if(!$('#commentary-form').reportValidity()||(scenario==='number'&&!number.reportValidity()))return;
  clearPreview();const version=previewVersion,settings=commentaryDraft();
- previewStatus.textContent='Generating preview…';
+ previewStatus.textContent=settings.voiceProvider==='elevenlabs'?'Generating cloud preview… This can take up to about ${previewRequestTimeoutMs / 1000} seconds.':'Generating preview…';
  try{
-  const result=await req('/commentary/admin/preview','POST',{scenario,settings,...(scenario==='number'?{number:Number(number.value)}:{})},17000);
+  const result=await req('/commentary/admin/preview','POST',{scenario,settings,...(scenario==='number'?{number:Number(number.value)}:{})},${previewRequestTimeoutMs});
   if(version===previewVersion)showPreview(result,settings);
  }catch(error){if(version===previewVersion)previewStatus.textContent=error.message;}
 });

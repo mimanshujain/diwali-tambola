@@ -18,6 +18,8 @@ on the TV to hear the voice. Its local **Narration** switch can silence it.
 
 Previews use fictional player and game data with your unsaved settings. They stay in the host console. The server allows up to ten previews per minute per host on each instance. Use **Save commentary** when you’re ready to apply the settings.
 
+Cloud previews allow 25 seconds for the audio to return. If an Expressive preview times out, try the same sample with **Fast · Flash v2.5**. Live calls allow eight seconds for cloud audio before falling back to browser speech.
+
 During play, **Refresh live status** reports whether the server generated ElevenLabs audio or encountered an error. The TV caption shows the source when playback begins, including **TV browser fallback** when the TV reads a cloud announcement locally. Older announcements may have no saved voice report.
 
 ## If the voice sounds flat

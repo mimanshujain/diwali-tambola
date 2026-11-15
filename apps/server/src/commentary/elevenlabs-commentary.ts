@@ -7,6 +7,8 @@ export const speechModels = {
 
 export type VoiceDelivery = keyof typeof speechModels;
 export type VoiceCue = 'warmly' | 'excited' | 'playfully' | 'curious';
+export const PREVIEW_VOICE_TIMEOUT_MS = 25_000;
+const LIVE_VOICE_TIMEOUT_MS = 8_000;
 
 export interface VoiceReport {
   status: 'generated' | 'browser' | 'voice_unconfigured' | 'rejected' | 'timeout' | 'unavailable';
@@ -26,7 +28,7 @@ export function cloudVoiceConfigured(settings: VoiceSettings): boolean {
   return Boolean(process.env.ELEVENLABS_API_KEY?.trim() && voiceId(settings));
 }
 
-export async function synthesizeCommentarySpeech(line: string, settings: VoiceSettings, cue: VoiceCue): Promise<VoiceReport & {audio?: Buffer}> {
+export async function synthesizeCommentarySpeech(line: string, settings: VoiceSettings, cue: VoiceCue, purpose: 'live' | 'preview' = 'live'): Promise<VoiceReport & {audio?: Buffer}> {
   if (settings.voiceProvider === 'browser') return {status: 'browser'};
   const model = speechModels[settings.voiceDelivery];
   const voice = voiceId(settings), key = process.env.ELEVENLABS_API_KEY?.trim();
@@ -35,7 +37,7 @@ export async function synthesizeCommentarySpeech(line: string, settings: VoiceSe
   const expressive = settings.voiceDelivery === 'expressive';
   // Only the app's cue can act as an audio tag. Text from names and Gemini is spoken as plain text.
   const text = expressive ? `[${cue}] ${line.replace(/[\[\]［］]/g, '')}` : line;
-  const signal = AbortSignal.timeout(8000);
+  const signal = AbortSignal.timeout(purpose === 'preview' ? PREVIEW_VOICE_TIMEOUT_MS : LIVE_VOICE_TIMEOUT_MS);
   try {
     const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(voice) + '?output_format=mp3_44100_128', {
       method: 'POST',

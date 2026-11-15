@@ -147,7 +147,9 @@ try{
  await page.locator('#commentary-provider').selectOption('elevenlabs');
  await page.locator('#commentary-delivery').selectOption('expressive');
  await page.locator('#commentary-tone').selectOption('energetic');
+ await page.locator('#commentary-test-number').fill('47');
  await page.locator('#commentary-generate').click();
+ await page.getByText(/Generating cloud preview/).waitFor();
  await page.getByText('ElevenLabs audio is ready to play · Eleven v3',{exact:true}).waitFor();
  assert.ok(await page.getByRole('button',{name:'Compare browser voice'}).isVisible());
  await page.locator('#commentary-preview-audio').evaluate(audio=>audio.play());
