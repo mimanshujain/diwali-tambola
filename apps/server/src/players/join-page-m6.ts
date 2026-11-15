@@ -1,6 +1,8 @@
 import { APPEARANCE_CLIENT } from '../display/appearance.js';
 import { theme } from '../display/theme.js';
 import { workspaceCss, workspaceNavigation } from '../display/workspace-theme.js';
+import { cloudMode } from '../hosting/context.js';
+import { playerQuickGuide, prizeHelp } from '../onboarding/game-guide.js';
 
 const playerCss = String.raw`
 .player-workspace .workspace-header-inner, .player-main, .player-nav { max-width: 900px; margin-inline: auto; }
@@ -13,6 +15,7 @@ const playerCss = String.raw`
 .player-workspace .account-identity { max-width: clamp(100px, 34vw, 230px); }
 .player-entry { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; gap: 12px; }
 .player-entry > * { min-width: 0; }
+.player-guide li + li { margin-top: .4rem; }
 .player-main .storage-warning { margin: 0; color: #ffbaba; font-size: 13px; }
 .player-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px 12px; }
 .player-summary p { margin: 0; }
@@ -66,7 +69,7 @@ export function renderJoinPage():string {
   <p id="message" class="notice" role="status" aria-live="polite"></p><p id="storage-warning" class="storage-warning" hidden>Your browser cannot save this session. Keep your recovery code before closing this page.</p>
 
   <div id="guest-entry" class="player-entry">
-   <form id="register" class="panel form-flow"><h2>Join the game</h2><p class="section-note">Use a name the host can recognize and approve. Save the private recovery code that comes with your ticket.</p><label>Your name<input id="name" autocomplete="name" maxlength="80" placeholder="First and last name" required></label><button id="register-button">Get my ticket</button><p id="registration-help" class="section-note"></p></form>
+   <form id="register" class="panel form-flow"><h2>Join the game</h2><p class="section-note">Enter a name your host will recognize. It can appear on the TV. Review your ticket while the host approves you.</p><label>Your name<input id="name" autocomplete="name" maxlength="80" placeholder="First and last name" required></label><button id="register-button">Get my ticket</button><p id="registration-help" class="section-note"></p></form>
    <details id="restore-panel" class="panel section-disclosure"><summary>Restore a ticket</summary><form id="restore" class="section-body form-flow"><p class="section-note">Use the code saved when you joined. Ask the host to reset access if you lost it.</p><label>Private recovery code<input id="recovery-input" autocomplete="off" spellcheck="false" required placeholder="32-character code"></label><button id="restore-button" class="ghost">Restore my ticket</button></form></details>
   </div>
 
@@ -83,11 +86,14 @@ export function renderJoinPage():string {
    </section>
    <section id="prize-section" class="panel stack" data-view="prizes" hidden><div><h2 tabindex="-1" data-view-heading>Prizes</h2><p class="section-note">Tambola detects qualifying tickets automatically. Use Claim to alert the host for review.</p></div><p id="claim-help" class="section-note" hidden></p><div id="categories" class="workspace-list"></div></section>
   </div>
+  ${cloudMode()?'<aside id="host-invite" class="panel row between" hidden><strong>Run a Tambola party of your own</strong><a class="button ghost" href="/host">Host your own game</a></aside>':''}
+  ${playerQuickGuide()}
  </main><script>${APPEARANCE_CLIENT}
  ${workspaceNavigation}
  (function(){
  const $=s=>document.querySelector(s),id=location.pathname.split('/').filter(Boolean).pop(),root='/games/'+encodeURIComponent(id);
  const openPlayerView=setupWorkspace('ticket');
+ const prizeHelp=${JSON.stringify(prizeHelp)};
  const tokenKey='tambola-token-'+id,recoveryKey='tambola-recovery-'+id;
  const memory={};const storage={get(key){try{return localStorage.getItem(key);}catch{return memory[key]||null;}},set(key,value){memory[key]=value;try{localStorage.setItem(key,value);}catch{$('#storage-warning').hidden=false;}},remove(key){delete memory[key];try{localStorage.removeItem(key);}catch{}}};
  let token=storage.get(tokenKey),ticket=null,player=null,game=null,called=new Set(),latest=null,refreshing=false,queued=false,busy=false,powerState=null,rerollsRemaining=3;
@@ -112,6 +118,7 @@ export function renderJoinPage():string {
   $('#registration-help').textContent=closed?'Registration is closed while play is stopped or finished.':game?.status==='RUNNING'||game?.status==='PAUSED'?'Your ticket locks immediately. Ask the host to approve it.':'';
   $('#registration-help').hidden=!$('#registration-help').textContent;
   $('#powerSubmit').disabled=busy||!token||!player?.approved||powerState!=='AVAILABLE'||!['RUNNING','PAUSED'].includes(game?.status)||game?.emergencyStopped||ticket?.status!=='SUBMITTED';
+  const invitation=$('#host-invite');if(invitation)invitation.hidden=!joined||game?.status!=='COMPLETED';
   if(!joined)return;
   const submitted=ticket.status==='SUBMITTED',open=game?.status==='CREATED'&&!game?.emergencyStopped;
   $('#welcome').textContent=player.name;$('#player-initial').textContent=Array.from(player.name)[0]?.toUpperCase()||'G';
@@ -155,7 +162,9 @@ export function renderJoinPage():string {
   const list=$('#categories');list.replaceChildren();
   for(const category of open){
    const row=node('article','','desk-item player-prize'),text=node('div','','desk-item-text');
-   text.append(node('h3',category.name));if(category.prize_description)text.append(node('p',category.prize_description,'section-note'));
+   text.append(node('h3',category.name));
+   if(Object.hasOwn(prizeHelp,category.rule_type))text.append(node('p',prizeHelp[category.rule_type],'section-note'));
+   if(category.prize_description)text.append(node('p',category.prize_description,'section-note'));
    const claim=node('button','Claim','ghost small-button');claim.setAttribute('aria-label','Claim '+category.name);claim.disabled=!canClaim;
    claim.onclick=()=>action(claim,async()=>{await request('/players/me/claims','POST',{categoryId:category.id});message('Claim sent for '+category.name+'. Play pauses for the host to review.');});
    row.append(text,claim);list.append(row);

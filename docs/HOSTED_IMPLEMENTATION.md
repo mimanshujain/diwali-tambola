@@ -59,3 +59,10 @@ In Google Cloud Console, register the full callback URL as an **Authorized redir
 | The TV redirects to `/screen` | Pair it from the game's host console. Generate a new code if the previous one was used, expired or revoked. |
 
 For deployment steps, backups and a real sign-in rehearsal, see the [hosted pilot runbook](HOSTED_PILOT.md).
+
+## Invite the first hosts
+
+- Share the hosted homepage to let prospective hosts try the practice round. Share a game’s guest link to take players directly to the join screen.
+- On the Render web service, set `HOST_ACCESS_REQUEST_URL` to the HTTPS URL of your host request form. The homepage will display **Request host access**, and the hosting page will link to that form. Ask for the Google email the organizer plans to use. Review each request before adding the address to the existing invitation list.
+- Ask five first-time hosts to run a live game across a few occasions. Observe sign-in, TV pairing, guest approval, and the first confirmed prize. Track where hosts ask for help and where guests stop before receiving a usable ticket.
+- After the pilot, record a short walkthrough from a sample game. Show the TV QR, joining with a phone, a number lighting up on the ticket, and the host confirming a prize. Use the clip on the home page and in community shares. Link to **How to play** for visitors who want to see the prize patterns.

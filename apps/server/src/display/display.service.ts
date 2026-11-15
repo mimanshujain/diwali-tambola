@@ -63,7 +63,7 @@ export class DisplayService {
       this.tambola.getGame(id),
       this.tambola.listCalls(id),
       this.db.query<{id:string;name:string;active:boolean;status:string|null}>(
-        `SELECT c.id,c.name,c.active,c.prize_description,o.status
+        `SELECT c.id,c.name,c.active,c.rule_type,c.prize_description,o.status
          FROM winning_categories c LEFT JOIN category_outcomes o ON o.category_id=c.id
          WHERE c.game_id=$1 AND c.active=true ORDER BY c.name`, [id],
       ),
