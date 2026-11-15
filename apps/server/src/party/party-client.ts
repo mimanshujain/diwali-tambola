@@ -17,7 +17,7 @@ document.head.appendChild(css);
 const toolbar=document.createElement('div');toolbar.className='party-toolbar no-print';document.querySelector('header')?.appendChild(toolbar);
 const button=(text,handler)=>{const node=document.createElement('button');node.type='button';node.className='ghost';node.textContent=text;node.addEventListener('click',handler);toolbar.appendChild(node);return node;};
 const params=new URLSearchParams(location.search);let desiredSound=params.get('sound')==='1',sound=false,context,hindi=params.get('hindi')!=='0';
-const soundButton=button('',()=>{if(sound){desiredSound=false;sound=false;stopSpeech();commentaryAudio?.pause();updateSound();}else enableSound();});
+const soundButton=button('',()=>{if(sound){desiredSound=false;sound=false;stopSpeech();cancelCommentaryAudio?.();updateSound();}else enableSound();});
 const hindiButton=button('',()=>{hindi=!hindi;hindiButton.textContent='Hindi voice '+(hindi?'on':'off');if(!hindi)stopSpeech('classic');});hindiButton.textContent='Hindi voice '+(hindi?'on':'off');
 button('Fullscreen',()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.().catch(()=>{});else document.exitFullscreen?.().catch(()=>{});});
 function updateSound(){soundButton.textContent=sound?'Sound on':desiredSound?'Press OK for sound':'Sound off · press OK';}
@@ -30,10 +30,10 @@ const special={1:'एक अकेला, सबसे पहला',2:'एक �
 // Keep one utterance active until the browser reports completion.
 const speechQueue=[];
 let activeSpeech=null;
-function speakLine(text,lang,kind){
+function speakLine(text,lang,kind,onStart){
  return new Promise(resolve=>{
   if(!window.speechSynthesis||!window.SpeechSynthesisUtterance){resolve();return;}
-  speechQueue.push({text,lang,kind,resolve});
+  speechQueue.push({text,lang,kind,resolve,onStart});
   speakNext();
  });
 }
@@ -54,6 +54,7 @@ function speakNext(){
   speech.lang=job.lang;
   const voice=browserVoice(window.speechSynthesis.getVoices(),job.lang);
   if(voice)speech.voice=voice;
+  if(job.onStart)speech.onstart=job.onStart;
   speech.onend=finish;
   speech.onerror=finish;
   job.speech=speech;
@@ -63,7 +64,7 @@ function speakNext(){
 }
 function stopActiveSpeech(job){
  if(activeSpeech!==job)return;
- if(job.speech)job.speech.onend=job.speech.onerror=null;
+ if(job.speech)job.speech.onstart=job.speech.onend=job.speech.onerror=null;
  try{window.speechSynthesis.cancel();}finally{job.finish();}
 }
 function stopSpeech(kind){
@@ -93,18 +94,49 @@ function scan(){const latest=document.querySelector('#latest'),number=latest?.te
 const winnerTarget=document.querySelector('#winners');if(winnerTarget)new MutationObserver(scan).observe(winnerTarget,{childList:true,subtree:true});const numberTarget=document.querySelector('#latest');if(numberTarget)new MutationObserver(scan).observe(numberTarget,{childList:true,characterData:true,subtree:true});scan();
 // The TV is the only narrator. The host saves global options; this button controls local sound.
 const commentaryId=document.querySelector('[data-game-id]')?.dataset.gameId;
-const caption=document.createElement('div');caption.id='commentary-caption';caption.setAttribute('aria-live','polite');caption.hidden=true;document.body.append(caption);
-const captionCss=document.createElement('style');captionCss.textContent='#commentary-caption{position:fixed;z-index:900;bottom:2vh;left:15vw;right:15vw;border:1px solid var(--occasion-accent);border-radius:14px;background:var(--occasion-background);color:var(--occasion-accent);padding:10px 16px;font-size:clamp(15px,2.3vh,30px);text-align:center;box-shadow:0 6px 28px #0009;pointer-events:none}#commentary-caption[hidden]{display:none}';document.head.append(captionCss);
-let commentaryCursor=0,commentaryInitialized=false,commentaryPolling=false,commentaryQueue=[],commentarySpeaking=false,commentaryAudio=null;
-const narrationButton=button('Narration on',()=>{narrationLocal=!narrationLocal;narrationButton.textContent='Narration '+(narrationLocal?'on':'off');if(!narrationLocal){commentaryQueue=[];commentaryAudio?.pause();stopSpeech('commentary');}});
+const caption=document.createElement('div');caption.id='commentary-caption';caption.hidden=true;
+const captionText=document.createElement('div');captionText.setAttribute('aria-live','polite');
+const captionVoice=document.createElement('small');captionVoice.id='commentary-voice-source';
+caption.append(captionText,captionVoice);document.body.append(caption);
+const captionCss=document.createElement('style');captionCss.textContent='#commentary-caption{position:fixed;z-index:900;bottom:2vh;left:15vw;right:15vw;border:1px solid var(--occasion-accent);border-radius:14px;background:var(--occasion-background);color:var(--occasion-accent);padding:10px 16px;font-size:clamp(15px,2.3vh,30px);text-align:center;box-shadow:0 6px 28px #0009;pointer-events:none}#commentary-caption[hidden]{display:none}#commentary-voice-source:not(:empty){display:block;margin-top:3px;color:var(--occasion-muted)}';document.head.append(captionCss);
+let commentaryCursor=0,commentaryInitialized=false,commentaryPolling=false,commentaryQueue=[],commentarySpeaking=false,cancelCommentaryAudio=null;
+const narrationButton=button('Narration on',()=>{narrationLocal=!narrationLocal;narrationButton.textContent='Narration '+(narrationLocal?'on':'off');if(!narrationLocal){commentaryQueue=[];cancelCommentaryAudio?.();stopSpeech('commentary');}});
 let narrationLocal=true;
-function browserNarration(line,settings){
- if(!sound||!narrationLocal||!commentaryConfig?.enabled||commentaryHalted)return;
- return speakLine(line,commentaryLocale(settings),'commentary');
+function showVoiceSource(source){
+ captionVoice.textContent=source;
+ narrationButton.title='Last narration voice · '+source;
 }
-async function voiceNarration(event,settings){if(event.audio){try{await new Promise((resolve,reject)=>{const audio=new Audio('/games/'+encodeURIComponent(commentaryId)+'/commentary/'+event.seq+'/audio');commentaryAudio=audio;audio.onended=resolve;audio.onerror=reject;audio.play().catch(reject);setTimeout(()=>{audio.pause();resolve();},13000);});return;}catch{}}await browserNarration(event.text,settings);}
-async function drainCommentary(){if(commentarySpeaking)return;commentarySpeaking=true;try{while(commentaryQueue.length){const {event,settings}=commentaryQueue.shift();caption.textContent=event.text;caption.hidden=false;if(sound&&narrationLocal)await voiceNarration(event,settings);else await new Promise(resolve=>setTimeout(resolve,1300));}caption.hidden=true;}finally{commentarySpeaking=false;}}
-async function pollCommentary(){if(!commentaryId||commentaryPolling)return;commentaryPolling=true;try{const r=await fetch('/games/'+encodeURIComponent(commentaryId)+'/commentary?after='+commentaryCursor,{cache:'no-store'});if(!r.ok)return;const data=await r.json();const wasEnabled=commentaryConfig?.enabled;commentaryConfig=data.settings;commentaryHalted=data.halted;if(data.settings.enabled&&!wasEnabled)stopSpeech('classic');narrationButton.textContent=data.settings.enabled?'Narration '+(narrationLocal?'on':'off'):'Narration off (host)';narrationButton.disabled=!data.settings.enabled;if(!data.settings.enabled||data.halted){commentaryQueue=[];for(const event of data.events)commentaryCursor=Math.max(commentaryCursor,event.seq);commentaryInitialized=true;commentaryAudio?.pause();stopSpeech(data.halted?undefined:'commentary');caption.hidden=true;return;}
+function playCommentaryAudio(seq){
+ if(!window.Audio)return Promise.resolve(false);
+ return new Promise(resolve=>{
+  const audio=new Audio('/games/'+encodeURIComponent(commentaryId)+'/commentary/'+seq+'/audio');
+  let started=false,timer;
+  const finish=handled=>{
+   if(cancelCommentaryAudio!==cancel)return;
+   cancelCommentaryAudio=null;clearTimeout(timer);audio.onplaying=audio.onended=audio.onerror=null;
+   audio.pause();resolve(handled);
+  };
+  const fail=()=>finish(started),cancel=()=>finish(true);
+  cancelCommentaryAudio=cancel;
+  audio.onplaying=()=>{
+   if(started)return;
+   started=true;showVoiceSource('ElevenLabs');clearTimeout(timer);
+   // Let the clip finish. Only a stalled player should hit the watchdog.
+   timer=setTimeout(fail,40000);
+  };
+  audio.onended=()=>finish(true);audio.onerror=fail;
+  timer=setTimeout(fail,8000);
+  try{Promise.resolve(audio.play()).catch(fail);}catch{fail();}
+ });
+}
+async function voiceNarration(event,settings){
+ if(event.audio&&await playCommentaryAudio(event.seq))return;
+ if(!sound||!narrationLocal||!commentaryConfig?.enabled||commentaryHalted)return;
+ const source=event.audio||settings.voiceProvider==='elevenlabs'?'TV browser fallback':'TV browser voice';
+ await speakLine(event.text,commentaryLocale(settings),'commentary',()=>showVoiceSource(source));
+}
+async function drainCommentary(){if(commentarySpeaking)return;commentarySpeaking=true;try{while(commentaryQueue.length){const {event,settings}=commentaryQueue.shift();captionText.textContent=event.text;captionVoice.textContent='';caption.hidden=false;if(sound&&narrationLocal)await voiceNarration(event,settings);else await new Promise(resolve=>setTimeout(resolve,1300));}}finally{caption.hidden=true;commentarySpeaking=false;}}
+async function pollCommentary(){if(!commentaryId||commentaryPolling)return;commentaryPolling=true;try{const r=await fetch('/games/'+encodeURIComponent(commentaryId)+'/commentary?after='+commentaryCursor,{cache:'no-store'});if(!r.ok)return;const data=await r.json();const wasEnabled=commentaryConfig?.enabled;commentaryConfig=data.settings;commentaryHalted=data.halted;if(data.settings.enabled&&!wasEnabled)stopSpeech('classic');narrationButton.textContent=data.settings.enabled?'Narration '+(narrationLocal?'on':'off'):'Narration off (host)';narrationButton.disabled=!data.settings.enabled;if(!data.settings.enabled||data.halted){commentaryQueue=[];for(const event of data.events)commentaryCursor=Math.max(commentaryCursor,event.seq);commentaryInitialized=true;cancelCommentaryAudio?.();stopSpeech(data.halted?undefined:'commentary');caption.hidden=true;return;}
  for(const event of data.events){commentaryCursor=Math.max(commentaryCursor,event.seq);if(commentaryInitialized){if(event.kind==='WINNER')commentaryQueue.unshift({event,settings:data.settings});else commentaryQueue.push({event,settings:data.settings});}}
  commentaryInitialized=true;if(commentaryQueue.length>4)commentaryQueue=commentaryQueue.filter(x=>x.event.kind==='WINNER').concat(commentaryQueue.filter(x=>x.event.kind!=='WINNER').slice(-2));void drainCommentary();
  }catch{}finally{commentaryPolling=false;}}

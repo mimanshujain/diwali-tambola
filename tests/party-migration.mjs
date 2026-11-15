@@ -13,6 +13,7 @@ import {PARTY_OPERATIONS_MIGRATION} from '../apps/server/dist/database/migration
 import {PARTY_READINESS_MIGRATION} from '../apps/server/dist/database/migrations/009_party_readiness.js';
 import {COMMENTARY_MIGRATION} from '../apps/server/dist/database/migrations/012_commentary.js';
 import {COMMENTARY_INNUENDO_MIGRATION} from '../apps/server/dist/database/migrations/015_commentary_innuendo.js';
+import {COMMENTARY_VOICE_DELIVERY_MIGRATION} from '../apps/server/dist/database/migrations/016_commentary_voice_delivery.js';
 export async function migrationChecks(client){
  await client.query('BEGIN');
  try{
@@ -39,7 +40,8 @@ export async function migrationChecks(client){
   await client.query(COMMENTARY_MIGRATION);
   await client.query('INSERT INTO game_commentary_settings(game_id, family_friendly, allow_sexual_references) VALUES($1, false, true)',[id]);
   await client.query(COMMENTARY_INNUENDO_MIGRATION);
-  const commentary=(await client.query('SELECT allow_sexual_references, innuendo_intensity FROM game_commentary_settings WHERE game_id=$1',[id])).rows[0];
-  assert.deepEqual(commentary,{allow_sexual_references:true,innuendo_intensity:1});
+  await client.query(COMMENTARY_VOICE_DELIVERY_MIGRATION);
+  const commentary=(await client.query('SELECT allow_sexual_references, innuendo_intensity, voice_delivery FROM game_commentary_settings WHERE game_id=$1',[id])).rows[0];
+  assert.deepEqual(commentary,{allow_sexual_references:true,innuendo_intensity:1,voice_delivery:'fast'});
  }finally{await client.query('ROLLBACK');}
 }

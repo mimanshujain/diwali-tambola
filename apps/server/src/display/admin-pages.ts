@@ -85,8 +85,8 @@ function say(message){$('#message').textContent=message||'';}
 function el(tag,text,className){const node=document.createElement(tag);node.textContent=text??'';if(className)node.className=className;return node;}
 function button(label,action,className='ghost small-button'){const node=el('button',label,className);node.type='button';node.onclick=()=>run(node,action);return node;}
 const pendingButtons=new Set();
-async function request(path,method='GET',body){
- const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+async function request(path,method='GET',body,timeoutMs=12000){
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),timeoutMs);
  try{const response=await fetch(path,{method,cache:'no-store',signal:controller.signal,headers:{'content-type':'application/json',...(keyBox.value?{'x-admin-key':keyBox.value}:{})},body:body===undefined?undefined:JSON.stringify(body)});
  const data=await response.json().catch(()=>({}));
  if(hosted&&response.status===401){location.href='/auth/login';throw Error('Please sign in again.');}
@@ -246,7 +246,7 @@ const id=location.pathname.split('/').filter(Boolean).pop(),root='/games/'+encod
 let display=null,players=[],categories=[],refreshPromise=null,queued=false,intervalLoaded=false,serverClock=0,clockAt=0;
 let knownClaims=null,knownPowers=null,alertContext=null,alertEnabled=false,pendingClaim=null,loadedGameList=null;
 let playerRows,categoryRows;
-const req=(path,method='GET',body)=>request(root+path,method,body);
+const req=(path,method='GET',body,timeoutMs)=>request(root+path,method,body,timeoutMs);
 ${commentaryEditorJs}
 if(!hosted)$('#tvQr').src='/admin/'+encodeURIComponent(id)+'/tv-qr.svg';else{
  $('#tvQr').hidden=true;

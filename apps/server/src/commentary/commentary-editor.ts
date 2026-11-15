@@ -15,6 +15,7 @@ export const commentaryFields=String.raw`
  <div class="grid"><label>Player shout-out interval<input id="commentary-shoutouts" type="number" min="0" max="30" step="1" required><small>Every N calls. Use 0 to turn off.</small></label><label class="row"><input id="commentary-winners" type="checkbox" style="width:auto"> Announce confirmed winners</label></div>
  <div class="grid"><label>Shout-out focus<select id="commentary-focus"><option value="mixed">Mix leaders and fewer calls</option><option value="leaders">Players doing well</option><option value="few">Players with few calls</option></select></label><label>Commentary tone<select id="commentary-tone"><option value="warm">Warm</option><option value="energetic">Energetic</option><option value="playful">Playful</option></select></label></div>
  <div class="grid"><label>Voice source<select id="commentary-provider"><option value="browser">TV browser voice (free)</option><option value="elevenlabs">Cloud voice (ElevenLabs)</option></select></label><label>Accent<select id="commentary-accent"><option value="indian">Indian</option><option value="us">US</option></select></label></div>
+ <label id="commentary-delivery-field" hidden>Cloud voice delivery<select id="commentary-delivery" aria-describedby="commentary-delivery-help"><option value="fast">Fast · Flash v2.5</option><option value="expressive">Expressive · Eleven v3</option></select><small id="commentary-delivery-help">Expressive uses the tone and game event to direct the delivery. Preview it with your chosen voice.</small></label>
  <label>Voice style<select id="commentary-style"><option value="standard">Standard voice</option><option value="licensed">Licensed featured voice</option></select></label><p class="small">Accent depends on a matching voice installed on the TV or configured by the service owner. A featured voice must be licensed and configured by the owner.</p>
  <label class="row"><input id="commentary-family" type="checkbox" style="width:auto"> Family friendly (default; no sexual references)</label>
  <label class="row"><input id="commentary-adult" type="checkbox" style="width:auto" aria-controls="commentary-innuendo-controls"> Allow sexual innuendo (adults only)</label>
@@ -49,7 +50,7 @@ ${browserVoiceJs}
 const innuendoLevels=${JSON.stringify(innuendoLevels)};
 let commentaryDirty=false,commentaryLoaded=false;
 let previewVersion=0,previewSpeech=null;
-const commentaryInputs=['enabled','language','calls','shoutouts','focus','tone','winners','provider','accent','style','family','adult'].map(k=>$('#commentary-'+k));
+const commentaryInputs=['enabled','language','calls','shoutouts','focus','tone','winners','provider','delivery','accent','style','family','adult'].map(k=>$('#commentary-'+k));
 const innuendoMeter=$('#commentary-innuendo');
 const previewButton=$('#commentary-generate'),previewStatus=$('#commentary-preview-status');
 const previewAudio=$('#commentary-preview-audio'),previewSpeak=$('#commentary-preview-speak'),previewVoice=$('#commentary-preview-voice');
@@ -70,6 +71,19 @@ function geminiSummary(report){
  const reason=report.httpStatus===402?'payment_required':report.status;
  return 'Scripted fallback'+model+(report.httpStatus?' · Google HTTP '+report.httpStatus:'')+'. '+(geminiReasons[reason]||'Try a new preview.');
 }
+function voiceSummary(voice,preview=false){
+ if(!voice)return 'Voice source unavailable for older announcements.';
+ if(voice.status==='browser')return preview?'This preview uses the browser voice on this device.':'TV browser voice selected.';
+ const model=voice.model==='eleven_v3'?'Eleven v3':'Flash v2.5';
+ if(voice.status==='generated')return preview?'ElevenLabs audio is ready to play · '+model:'ElevenLabs audio generated · '+model;
+ const reason={voice_unconfigured:'The selected ElevenLabs voice or key is missing.',timeout:'ElevenLabs timed out.',unavailable:'ElevenLabs returned no playable audio.'};
+ const hint={401:'Check the key, Text to Speech permission, and plan access to the voice.',402:'Check the ElevenLabs plan and available credits.',403:'Check the key’s Text to Speech permission and voice access.',404:'Check the configured ElevenLabs voice ID.',429:'Check ElevenLabs usage and request limits.'};
+ const failed=voice.status==='rejected'?'ElevenLabs rejected the request (HTTP '+voice.httpStatus+'). '+(hint[voice.httpStatus]||'Check voice and model access in ElevenLabs.'):(reason[voice.status]||'ElevenLabs audio unavailable.');
+ return failed+' '+(preview?'You can play the browser preview on this device.':'The TV can use its browser voice.');
+}
+function updateDeliveryField(){
+ $('#commentary-delivery-field').hidden=$('#commentary-provider').value!=='elevenlabs';
+}
 function updateInnuendoControl(){
  const active=$('#commentary-adult').checked&&!$('#commentary-family').checked;
  const value=Number(innuendoMeter.value),level=innuendoLevels[value-1];
@@ -81,11 +95,12 @@ function updateInnuendoControl(){
 }
 function fillCommentary(c){
  const event=c.lastAnnouncement,kinds={NUMBER:'Number call',SHOUTOUT:'Player shout-out',WINNER:'Winner'};
- $('#commentary-last').textContent=event?'Last live announcement · '+kinds[event.kind]+' · '+new Date(event.at).toLocaleString()+' · '+geminiSummary(event.gemini):'No live announcements yet.';
+ $('#commentary-last').textContent=event?'Last live announcement · '+kinds[event.kind]+' · '+new Date(event.at).toLocaleString()+' · '+voiceSummary(event.voice)+' · '+geminiSummary(event.gemini):'No live announcements yet.';
  if(!commentaryLoaded){previewButton.disabled=false;$('#commentary-save').disabled=false;}
  if(commentaryDirty&&commentaryLoaded)return;
  commentaryLoaded=true;$('#commentary-enabled').checked=c.enabled;$('#commentary-focus').value=c.shoutoutMode;$('#commentary-tone').value=c.tone;$('#commentary-language').value=c.language;$('#commentary-calls').value=String(c.callsEvery);$('#commentary-shoutouts').value=String(c.shoutoutsEvery);$('#commentary-winners').checked=c.announceWinners;$('#commentary-provider').value=c.voiceProvider;$('#commentary-accent').value=c.accent;$('#commentary-style').value=c.voiceStyle;$('#commentary-family').checked=c.familyFriendly;$('#commentary-adult').checked=c.allowSexualReferences;
  innuendoMeter.value=String(c.innuendoIntensity??1);updateInnuendoControl();
+ $('#commentary-delivery').value=c.voiceDelivery??'fast';updateDeliveryField();
  $('#commentary-status').textContent=c.aiAvailable?'Gemini key configured. Generate a preview to verify it.':'Gemini key missing. Scripted commentary is available.';
 }
 async function loadCommentary(){
@@ -93,11 +108,12 @@ async function loadCommentary(){
  try{fillCommentary(await req('/commentary/admin/settings'));}catch(error){$('#commentary-status').textContent=error.message;}
 }
 function commentaryDraft(){
- return {enabled:$('#commentary-enabled').checked,shoutoutMode:$('#commentary-focus').value,tone:$('#commentary-tone').value,language:$('#commentary-language').value,callsEvery:Number($('#commentary-calls').value),shoutoutsEvery:Number($('#commentary-shoutouts').value),announceWinners:$('#commentary-winners').checked,voiceProvider:$('#commentary-provider').value,accent:$('#commentary-accent').value,voiceStyle:$('#commentary-style').value,familyFriendly:$('#commentary-family').checked,allowSexualReferences:$('#commentary-adult').checked,innuendoIntensity:Number(innuendoMeter.value)};
+ return {enabled:$('#commentary-enabled').checked,shoutoutMode:$('#commentary-focus').value,tone:$('#commentary-tone').value,language:$('#commentary-language').value,callsEvery:Number($('#commentary-calls').value),shoutoutsEvery:Number($('#commentary-shoutouts').value),announceWinners:$('#commentary-winners').checked,voiceProvider:$('#commentary-provider').value,voiceDelivery:$('#commentary-delivery').value,accent:$('#commentary-accent').value,voiceStyle:$('#commentary-style').value,familyFriendly:$('#commentary-family').checked,allowSexualReferences:$('#commentary-adult').checked,innuendoIntensity:Number(innuendoMeter.value)};
 }
+function browserPreviewLabel(){return previewAudio.hidden?'Play browser preview':'Compare browser voice';}
 function stopPreviewSpeech(){
  if(previewSpeech){previewSpeech=null;window.speechSynthesis.cancel();}
- previewSpeak.textContent='Play browser preview';
+ previewSpeak.textContent=browserPreviewLabel();
 }
 function clearPreview(){
  previewVersion++;
@@ -112,7 +128,7 @@ for(const field of commentaryInputs)field.addEventListener('change',()=>{
   if(!confirm('This is for an adults-only gathering. Allow suggestive commentary about the game?'))field.checked=false;
   else $('#commentary-family').checked=false;
  }
- updateInnuendoControl();
+ updateInnuendoControl();updateDeliveryField();
  clearPreview();
 });
 innuendoMeter.oninput=()=>{commentaryDirty=true;updateInnuendoControl();clearPreview();};
@@ -125,25 +141,27 @@ function showPreview(result,settings){
  $('#commentary-preview-script').textContent=result.script;
  $('#commentary-preview-generated').hidden=!result.reaction;
  $('#commentary-preview-reaction').textContent=result.reaction||'';
- const voice=result.voice,status=voice.status;
- const voiceReasons={voice_unconfigured:'The selected ElevenLabs voice or key is missing.',rejected:'ElevenLabs rejected the request'+(voice.httpStatus?' (HTTP '+voice.httpStatus+')':'')+'.',timeout:'ElevenLabs timed out.',unavailable:'ElevenLabs audio is unavailable.'};
- const browserHint='The preview uses the voices on this device.';
- previewVoice.textContent=status==='generated'?'ElevenLabs audio is ready to play.':(voiceReasons[status]?voiceReasons[status]+' ':'')+browserHint;
- previewSpeak.hidden=Boolean(voice.audio);
+ const voice=result.voice;
+ previewVoice.textContent=voiceSummary(voice,true);
+ previewSpeak.hidden=false;
  previewAudio.onerror=()=>{
   if(!previewAudio.getAttribute('src'))return;
-  previewAudio.hidden=true;previewSpeak.hidden=false;
-  previewVoice.textContent='Cloud audio could not play. '+browserHint;
+  previewAudio.hidden=true;
+  previewSpeak.textContent=browserPreviewLabel();
+  previewVoice.textContent='ElevenLabs generated audio, but this browser could not play it.';
  };
+ previewAudio.onplay=stopPreviewSpeech;
  if(voice.audio){previewAudio.src='data:audio/mpeg;base64,'+voice.audio;previewAudio.hidden=false;}
+ previewSpeak.textContent=browserPreviewLabel();
  previewSpeak.onclick=()=>{
   if(previewSpeech){stopPreviewSpeech();return;}
   if(!window.speechSynthesis||!window.SpeechSynthesisUtterance){previewVoice.textContent='Browser speech is unavailable on this device.';return;}
+  previewAudio.pause();
   const speech=new SpeechSynthesisUtterance(result.text);
   speech.lang=commentaryLocale(settings);
   const voice=browserVoice(window.speechSynthesis.getVoices(),speech.lang);
   if(voice)speech.voice=voice;
-  const finish=()=>{if(previewSpeech===speech){previewSpeech=null;previewSpeak.textContent='Play browser preview';}};
+  const finish=()=>{if(previewSpeech===speech){previewSpeech=null;previewSpeak.textContent=browserPreviewLabel();}};
   speech.onend=finish;
   speech.onerror=()=>{if(previewSpeech===speech)previewVoice.textContent='This browser could not speak the preview. Check its speech voices.';finish();};
   previewSpeech=speech;previewSpeak.textContent='Stop audio';window.speechSynthesis.speak(speech);
@@ -156,7 +174,7 @@ previewButton.onclick=()=>run(previewButton,async()=>{
  clearPreview();const version=previewVersion,settings=commentaryDraft();
  previewStatus.textContent='Generating preview…';
  try{
-  const result=await req('/commentary/admin/preview','POST',{scenario,settings,...(scenario==='number'?{number:Number(number.value)}:{})});
+  const result=await req('/commentary/admin/preview','POST',{scenario,settings,...(scenario==='number'?{number:Number(number.value)}:{})},17000);
   if(version===previewVersion)showPreview(result,settings);
  }catch(error){if(version===previewVersion)previewStatus.textContent=error.message;}
 });
