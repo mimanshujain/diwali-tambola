@@ -1,4 +1,5 @@
 import { renderTicket, earlyFiveAt, practiceCalls, starterPrizes, playerSteps } from './game-guide.js';
+import { renderVideoPreview, videoPreviewCss, videoPreviewJs } from './video-preview.js';
 
 const styles = `
 :root{color-scheme:light;--paper:#fbf5e9;--ink:#291d29;--muted:#64545f;--border:#dfd0bf;--gold:#f4bd66;--plum:#42293f;--accent:#653052;--green:#166049;--mint:#a6eed3;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
@@ -39,16 +40,6 @@ input{border:1px solid #987c88;border-radius:8px;min-height:44px;background:#fff
 #code{text-transform:uppercase;letter-spacing:.1em}
 .caption{font-size:.86rem;color:var(--muted)}
 .kicker{font-size:.8rem;font-weight:750;letter-spacing:.045em;color:var(--accent)}
- .gameplay-preview{margin:0;min-width:0;border:1px solid #6a4d61;border-radius:16px;overflow:hidden;background:#2a1b2d;box-shadow:0 16px 34px #412a3330}
- .gameplay-preview video,.gameplay-preview img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;background:#2a1b2d}
- .clip-poster{position:relative;display:block;width:100%;border:0;padding:0;background:#2a1b2d;color:#fff2e4;text-align:left;cursor:pointer}
- .clip-poster:focus-visible{outline-offset:-4px;outline-color:#fbd790}
- .clip-label{display:flex;align-items:center;gap:.65rem;padding:.68rem .9rem}
- .clip-label small{margin-left:auto;color:#ead8dd;font-size:.82rem}
- .clip-play{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:50%;background:var(--gold);color:#2a1b2d;font-size:.88rem}
- .clip-play::before{content:'';margin-left:2px;width:0;height:0;border-block:6px solid transparent;border-left:9px solid currentColor}
- .clip-poster:hover .clip-play{background:#ffe0a3}
- .clip-message{padding:.7rem .9rem;color:#f6dfdf}.clip-message a{color:#fbe1a4}
 .learn-ticket{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:clamp(2px,.8vw,5px);font-variant-numeric:tabular-nums}
 .learn-cell{display:grid;place-items:center;min-width:0;aspect-ratio:1.1;border:1px solid #ddcabc;border-radius:4px;background:#fffdf8;color:#38273b;font-weight:750;font-size:clamp(.65rem,2.9vw,1.13rem)}
 .learn-cell.blank{background:#ede3d7;border-color:transparent}
@@ -94,7 +85,7 @@ function escapeAttribute(value: string): string {
 function publicPage(title: string, description: string, body: string, options: {cloud: boolean; script?: string}): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${title} · Tambola</title><meta name="description" content="${description}"><meta property="og:title" content="${title} · Tambola">
-  <meta property="og:description" content="${description}"><style>${styles}</style></head><body>
+  <meta property="og:description" content="${description}"><style>${styles}${videoPreviewCss}</style></head><body>
   <header class="site-nav wrap"><a href="${options.cloud ? '/' : '/how-to-play'}" class="brand"><strong aria-hidden="true">✦</strong>Tambola</a>
   <nav aria-label="Site navigation"><a href="/how-to-play">How to play</a>${options.cloud?'<a href="/#join">Join a game</a><a href="/admin">Host sign in</a>':'<a href="/practice">Practice round</a>'}</nav></header>
   <main class="wrap">${body}</main>
@@ -117,15 +108,7 @@ form.addEventListener('submit',event=>{
  const code=document.getElementById('code').value.trim().toUpperCase();
  location.href='/g/'+encodeURIComponent(code);
 });
-const watch=document.getElementById('watch-gameplay'),video=document.getElementById('gameplay-video');
-watch.addEventListener('click',()=>{
- watch.hidden=true;
- video.hidden=false;
- video.src=video.dataset.src;
- video.focus();
- video.play()?.catch(()=>{});
-});
-video.addEventListener('error',()=>{document.getElementById('gameplay-error').hidden=false;});
+
 `;
 
 export function renderLaunchPage(): string {
@@ -136,23 +119,17 @@ export function renderLaunchPage(): string {
    <div class="hero-copy"><h1>Host Tambola on your TV.</h1><p class="lead">Guests scan a QR code and play on their phones. Tambola, also called Housie, is a 90-ball bingo-style game for birthdays, Diwali, and nights with friends.</p>
     <div class="actions"><a class="button" href="/practice">Try a practice round</a><a class="button secondary" href="/host">${requestLabel}</a></div>
    </div>
-   <figure class="gameplay-preview" aria-label="Tambola gameplay walkthrough">
-     <button class="clip-poster" type="button" id="watch-gameplay" aria-controls="gameplay-video">
-       <img src="/media/gameplay/overview-v1.jpg" alt="" width="960" height="540">
-       <span class="clip-label"><span class="clip-play" aria-hidden="true"></span><strong>Watch gameplay</strong><small>25 sec</small></span>
-     </button>
-     <video id="gameplay-video" controls playsinline preload="none" hidden tabindex="0" aria-label="Tambola gameplay video" aria-describedby="gameplay-transcript" data-src="/media/gameplay/overview-v1.mp4"></video>
-     <p id="gameplay-transcript" class="sr-only">A guest scans the TV QR, enters their name, and gets a ticket. Numbers called on the TV highlight matching numbers on the phone. At five matches the ticket qualifies for Early Five, and the host checks and confirms the prize.</p>
-     <p class="clip-message" id="gameplay-error" role="status" hidden>Playback is unavailable. <a href="/media/gameplay/overview-v1.mp4">Open the video file</a>.</p>
-     <noscript><p class="clip-message"><a href="/media/gameplay/overview-v1.mp4">Watch the 25-second gameplay video</a></p></noscript>
-   </figure>
+   ${renderVideoPreview({
+     id:'gameplay',file:'overview-v1',title:'Tambola gameplay video',watchLabel:'Watch gameplay',seconds:25,
+     transcript:'A guest scans the TV QR, enters their name, and gets a ticket. Numbers called on the TV highlight matches on the phone. At five matches the host checks and confirms Early Five.',
+   })}
   </section>
   <div class="home-grid">
    <section class="panel stack"><h2>Join a game</h2><p>Use the six-character game code on your host’s TV or invitation. Joining is account-free.</p>
     <form class="join-form" id="join"><label>Game code<input id="code" maxlength="6" minlength="6" pattern="[A-HJ-NP-Za-hj-np-z2-9]{6}" title="Enter the six-character game code" required autocapitalize="characters" autocomplete="off" placeholder="ABC234"></label><button class="button">Join game</button></form>
    </section>
    <section class="panel stack"><h2>Winning patterns</h2><p>See which numbers need to match for Early Five, Top Line, and Full House.</p><div class="actions"><a href="/how-to-play">Read the rules and see winning tickets</a></div></section>
-  </div>`,{cloud:true,script:joinScript});
+  </div>`,{cloud:true,script:joinScript+videoPreviewJs});
 }
 
 export function renderHostInvitationPage(): string {

@@ -4,7 +4,7 @@ export type Access = { kind: 'public' | 'host' | 'screen'; game?: string; refere
 
 /** Explicit public allowlist. Newly added API routes require a host by default. */
 export function accessPolicy(method: string, path: string): Access {
-  if ((method === 'GET' || method === 'HEAD') && /^\/media\/gameplay\/overview-v1\.(?:mp4|jpg)$/.test(path)) return {kind:'public'};
+  if ((method === 'GET' || method === 'HEAD') && /^\/media\/gameplay\/(?:overview-v1|host-v1)\.(?:mp4|jpg)$/.test(path)) return {kind:'public'};
   if (method === 'GET' && /^(?:\/|\/(?:practice|how-to-play|host)|\/auth\/(?:login|google|callback)|\/health\/(?:live|ready)|\/(?:live|party|print)\/client\.js|\/g\/[A-Za-z2-9]{6}|\/join\/[0-9a-fA-F-]{36}|\/screen)$/.test(path)) return {kind:'public'};
   if (path.startsWith('/socket.io/')) return {kind:'public'}; // Invalidation messages only; snapshots enforce access.
   if (method === 'POST' && path === '/screen/connect') return {kind:'public'};

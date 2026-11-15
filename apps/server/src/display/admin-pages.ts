@@ -3,6 +3,7 @@ import { appearanceFields, appearanceEditorJs } from './appearance-editor.js';
 import { cloudMode, hostContext } from '../hosting/context.js';
 import { html } from './theme.js';
 import { workspaceCss, workspaceNavigation } from './workspace-theme.js';
+import { hostGuideButton, hostGuideCss, hostGuideJs, renderHostGuide } from '../onboarding/host-walkthrough.js';
 import { RULE_LABELS } from '../winners/domain/rules.js';
 
 function escapeHtml(value: string): string {
@@ -118,12 +119,12 @@ function updateBadge(node,status,stopped){node.textContent=displayStatus(status,
 
 export function homeAdminPage():string {
  return html('Tambola · Host desk',String.raw`
- <style>${workspaceCss}</style>
+ <style>${workspaceCss}${hostGuideCss}</style>
  ${hostHeader(false)}
  <div class="host-layout">${hostRail(homeViews,false)}<main class="host-content">
  <p id="message" class="notice" role="status"></p>
  <section id="games-view" data-view="games">
-  <div class="surface-heading"><div><h1 tabindex="-1" data-view-heading>Games</h1><p class="section-note">Manage your lobbies and completed rounds.</p></div><a class="button" href="#create" data-view-link="create">+ New game</a></div>
+  <div class="surface-heading"><div><h1 tabindex="-1" data-view-heading>Games</h1><p class="section-note">Manage your lobbies and completed rounds.</p></div><div class="row">${hostGuideButton}<a class="button" href="#create" data-view-link="create">+ New game</a></div></div>
   <div class="game-filters"><input id="search" type="search" aria-label="Search games" placeholder="Find a game or code"><select id="filter" aria-label="Filter games"><option value="active">Active games</option><option value="all">All games</option><option value="COMPLETED">Completed</option></select></div>
   <div class="row between game-list-meta"><span id="game-count" class="small" hidden></span><div class="row"><span id="health" class="connection">Checking server…</span>${cloudMode()?refreshButton:''}</div></div>
   <div id="games" class="game-cards"><p class="section-note">${cloudMode()?'Loading your games…':'Use Admin key in the header to unlock your games.'}</p></div>
@@ -135,7 +136,8 @@ export function homeAdminPage():string {
    ${appearanceFields}<div class="row"><button id="create" type="submit">Create game</button><a class="button ghost" href="#games" data-view-link="games">Back to games</a></div>
   </form>
  </section>
- </main></div>`,helpers+workspaceNavigation+appearanceEditorJs+String.raw`
+ </main></div>
+ ${renderHostGuide(cloudMode())}`,helpers+hostGuideJs+workspaceNavigation+appearanceEditorJs+String.raw`
 setupWorkspace('games',{'create-panel':'create'});
 let games=null;
 function render(){
@@ -162,7 +164,7 @@ load().catch(error=>say(error.message));setInterval(()=>load().catch(error=>say(
 export function adminPage(_gameId:string):string {
  const rules=Object.entries(RULE_LABELS).map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('');
  return html('Tambola · Game console',String.raw`
- <style>${workspaceCss}
+ <style>${workspaceCss}${hostGuideCss}
  .first-game-steps{display:grid;gap:.6rem 1.5rem;grid-template-columns:repeat(2,minmax(0,1fr));margin:0;padding-left:1.2rem}
  .first-game-steps a,.first-game-steps strong{font-weight:750}
  .first-game-steps span{display:block;color:var(--muted);font-size:.82rem}
@@ -179,7 +181,7 @@ export function adminPage(_gameId:string):string {
  </style>
  ${hostHeader(true)}
  <div class="host-layout">${hostRail(gameViews,true)}<main class="host-content">
- <header class="host-title"><h1 id="name">Loading game…</h1><div class="row"><span id="status" class="pill">Connecting</span><span id="game-code" class="code" aria-label="Join code"></span><div class="row host-game-meta"><span data-live-status></span>${cloudMode()?refreshButton:''}</div></div></header>
+ <header class="host-title"><h1 id="name">Loading game…</h1><div class="row"><span id="status" class="pill">Connecting</span><span id="game-code" class="code" aria-label="Join code"></span><div class="row host-game-meta"><span data-live-status></span>${hostGuideButton}${cloudMode()?refreshButton:''}</div></div></header>
  <p id="message" role="status" class="notice"></p><p id="recovery-notice" class="notice"></p>
  <section id="claim-banner" class="panel claim-banner" role="alert" hidden><div class="row between"><strong id="claim-message"></strong><button id="claim-review" class="small-button">Review claim</button></div></section>
  <section id="power-banner" class="panel claim-banner power-banner" role="alert" hidden><div class="row between"><strong id="power-message"></strong><button id="power-review" class="small-button">Review Lucky Strike</button></div></section>
@@ -257,7 +259,8 @@ export function adminPage(_gameId:string):string {
  </section>
 
  <dialog id="print-dialog" class="print-dialog" aria-labelledby="print-title"><h2 id="print-title">Select tickets for A4</h2><p class="small">Choose the submitted tickets to print. Each sheet holds up to three tickets.</p><div class="row"><button id="print-select-all" class="ghost" type="button">Select all</button><button id="print-select-none" class="ghost" type="button">Deselect all</button><span id="print-count" class="small"></span></div><div id="print-options" class="print-options"></div><p id="print-error" class="notice" role="alert"></p><div class="row"><button id="print-selected" type="button">Preview selected</button><button id="print-cancel" class="ghost" type="button">Cancel</button></div></dialog>
- </main></div>`,helpers+workspaceNavigation+appearanceEditorJs+String.raw`
+ </main></div>
+ ${renderHostGuide(cloudMode())}`,helpers+hostGuideJs+workspaceNavigation+appearanceEditorJs+String.raw`
 const id=location.pathname.split('/').filter(Boolean).pop(),root='/games/'+encodeURIComponent(id);
 let display=null,players=[],categories=[],refreshPromise=null,queued=false,intervalLoaded=false,serverClock=0,clockAt=0;
 let knownClaims=null,knownPowers=null,alertContext=null,alertEnabled=false,pendingClaim=null,loadedGameList=null;
