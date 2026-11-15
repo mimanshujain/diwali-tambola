@@ -101,7 +101,10 @@ caption.append(captionText,captionVoice);document.body.append(caption);
 const captionCss=document.createElement('style');captionCss.textContent='#commentary-caption{position:fixed;z-index:900;bottom:2vh;left:15vw;right:15vw;border:1px solid var(--occasion-accent);border-radius:14px;background:var(--occasion-background);color:var(--occasion-accent);padding:10px 16px;font-size:clamp(15px,2.3vh,30px);text-align:center;box-shadow:0 6px 28px #0009;pointer-events:none}#commentary-caption[hidden]{display:none}#commentary-voice-source:not(:empty){display:block;margin-top:3px;color:var(--occasion-muted)}';document.head.append(captionCss);
 let commentaryCursor=0,commentaryInitialized=false,commentaryPolling=false,commentaryQueue=[],commentarySpeaking=false,cancelCommentaryAudio=null;
 const narrationButton=button('Narration on',()=>{narrationLocal=!narrationLocal;narrationButton.textContent='Narration '+(narrationLocal?'on':'off');if(!narrationLocal){commentaryQueue=[];cancelCommentaryAudio?.();stopSpeech('commentary');}});
-let narrationLocal=true;
+let narrationLocal=true,playingAfterDark=false;
+function allowsAfterDark(settings){
+ return settings&&!settings.familyFriendly&&settings.allowSexualReferences&&settings.innuendoIntensity===4;
+}
 function showVoiceSource(source){
  captionVoice.textContent=source;
  narrationButton.title='Last narration voice · '+source;
@@ -131,12 +134,16 @@ function playCommentaryAudio(seq){
 }
 async function voiceNarration(event,settings){
  if(event.audio&&await playCommentaryAudio(event.seq))return;
- if(!sound||!narrationLocal||!commentaryConfig?.enabled||commentaryHalted)return;
+ if(!sound||!narrationLocal||!commentaryConfig?.enabled||commentaryHalted||(event.afterDark&&!allowsAfterDark(commentaryConfig)))return;
  const source=event.audio||settings.voiceProvider==='elevenlabs'?'TV browser fallback':'TV browser voice';
  await speakLine(event.text,commentaryLocale(settings),'commentary',()=>showVoiceSource(source));
 }
-async function drainCommentary(){if(commentarySpeaking)return;commentarySpeaking=true;try{while(commentaryQueue.length){const {event,settings}=commentaryQueue.shift();captionText.textContent=event.text;captionVoice.textContent='';caption.hidden=false;if(sound&&narrationLocal)await voiceNarration(event,settings);else await new Promise(resolve=>setTimeout(resolve,1300));}}finally{caption.hidden=true;commentarySpeaking=false;}}
+async function drainCommentary(){if(commentarySpeaking)return;commentarySpeaking=true;try{while(commentaryQueue.length){const {event,settings}=commentaryQueue.shift();playingAfterDark=Boolean(event.afterDark);captionText.textContent=event.text;captionVoice.textContent='';caption.hidden=false;if(sound&&narrationLocal)await voiceNarration(event,settings);else await new Promise(resolve=>setTimeout(resolve,1300));}}finally{caption.hidden=true;playingAfterDark=false;commentarySpeaking=false;}}
 async function pollCommentary(){if(!commentaryId||commentaryPolling)return;commentaryPolling=true;try{const r=await fetch('/games/'+encodeURIComponent(commentaryId)+'/commentary?after='+commentaryCursor,{cache:'no-store'});if(!r.ok)return;const data=await r.json();const wasEnabled=commentaryConfig?.enabled;commentaryConfig=data.settings;commentaryHalted=data.halted;if(data.settings.enabled&&!wasEnabled)stopSpeech('classic');narrationButton.textContent=data.settings.enabled?'Narration '+(narrationLocal?'on':'off'):'Narration off (host)';narrationButton.disabled=!data.settings.enabled;if(!data.settings.enabled||data.halted){commentaryQueue=[];for(const event of data.events)commentaryCursor=Math.max(commentaryCursor,event.seq);commentaryInitialized=true;cancelCommentaryAudio?.();stopSpeech(data.halted?undefined:'commentary');caption.hidden=true;return;}
+ if(!allowsAfterDark(data.settings)){
+  commentaryQueue=commentaryQueue.filter(item=>!item.event.afterDark);
+  if(playingAfterDark){caption.hidden=true;cancelCommentaryAudio?.();stopSpeech('commentary');}
+ }
  for(const event of data.events){commentaryCursor=Math.max(commentaryCursor,event.seq);if(commentaryInitialized){if(event.kind==='WINNER')commentaryQueue.unshift({event,settings:data.settings});else commentaryQueue.push({event,settings:data.settings});}}
  commentaryInitialized=true;if(commentaryQueue.length>4)commentaryQueue=commentaryQueue.filter(x=>x.event.kind==='WINNER').concat(commentaryQueue.filter(x=>x.event.kind!=='WINNER').slice(-2));void drainCommentary();
  }catch{}finally{commentaryPolling=false;}}

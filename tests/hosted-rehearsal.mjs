@@ -23,7 +23,7 @@ const pgPort=await freePort(),apiPort=await freePort(),port2=await freePort(),tl
 const output=await mkdtemp(join(tmpdir(),'tambola-hosted-')),origin='https://localhost:'+tlsPort;
 const pg=new EmbeddedPostgres({databaseDir:join(output,'pg'),port:pgPort,user:'postgres',password:'test-only',persistent:false,autoRehydrateSymlinks:true,postgresFlags:['-k','','-h','127.0.0.1'],onLog:()=>{},onError:console.error});
 const database=`postgresql://postgres:test-only@127.0.0.1:${pgPort}/tambola`;
-const env={...process.env,HOSTING_MODE:'cloud',DATABASE_URL:database,PUBLIC_APP_ORIGIN:origin,GOOGLE_CLIENT_ID:'test-google-client',GOOGLE_CLIENT_SECRET:'test-only',HOST_ALLOWED_EMAILS:'alice@example.com,bob@example.com,charlie@example.com',ADMIN_TOKEN:'old-admin-token-must-not-work',GEMINI_API_KEY:'gemini-rehearsal-key',GEMINI_MODEL:'',ELEVENLABS_API_KEY:'elevenlabs-rehearsal-key',COMMENTARY_ELEVEN_VOICE_HI_IN:'voice-hi'};
+const env={...process.env,HOSTING_MODE:'cloud',DATABASE_URL:database,PUBLIC_APP_ORIGIN:origin,GOOGLE_CLIENT_ID:'test-google-client',GOOGLE_CLIENT_SECRET:'test-only',HOST_ALLOWED_EMAILS:'alice@example.com,bob@example.com,charlie@example.com',ADMIN_TOKEN:'old-admin-token-must-not-work',GEMINI_API_KEY:'gemini-rehearsal-key',GEMINI_MODEL:'',ELEVENLABS_API_KEY:'elevenlabs-rehearsal-key',COMMENTARY_ELEVEN_VOICE_HI_IN:'voice-hi',COMMENTARY_VOICE_PROFILES:JSON.stringify([{id:'haryanvi',label:'Hindi · Haryanvi',language:'hi',dialect:'haryanvi',voiceId:'voice-haryanvi'}])};
 let db,browser,proxy,currentPort=apiPort;const children=[],logs=[];
 const hash=value=>createHash('sha256').update(value).digest('hex');
 async function start(port){const child=spawn(process.execPath,['--import','./tests/fixtures/google-provider.mjs','--import','./tests/fixtures/elevenlabs-provider.mjs','apps/server/dist/main.js'],{cwd:root,env:{...env,PORT:String(port)},stdio:['ignore','pipe','pipe']});children.push(child);child.stdout.on('data',b=>logs.push(String(b)));child.stderr.on('data',b=>logs.push(String(b)));for(let i=0;i<150;i++){if(child.exitCode!==null)throw Error(logs.join('').slice(-3000));try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)return child;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Startup timeout');}
@@ -143,9 +143,23 @@ try{
  assert.equal((await api(commentary+'/admin/settings',{cookie:alice})).data.language,'hi');
  assert.deepEqual((await api(commentary,{cookie:alice})).data.events,[]);
  await page.screenshot({path:join(output,'host-gemini-preview.png'),fullPage:true});
+ page.once('dialog',dialog=>dialog.accept());
+ await page.locator('#commentary-adult').check();
+ await page.locator('#commentary-innuendo').press('End');
+ assert.equal(await page.locator('#commentary-innuendo-value').textContent(),'4 of 4 · After Dark');
+ await page.locator('#commentary-generate').click();
+ await page.getByText('After Dark punchline',{exact:true}).waitFor();
+ assert.equal((await api(commentary+'/admin/settings',{cookie:alice})).data.familyFriendly,true);
+ await page.locator('#commentary-family').check();
+
  await page.locator('#commentary-language').selectOption('hi');
  await page.locator('#commentary-provider').selectOption('elevenlabs');
  await page.locator('#commentary-delivery').selectOption('expressive');
+ assert.equal(await page.locator('#commentary-profile option[value="haryanvi"]').textContent(),'Hindi · Haryanvi');
+ const haryanvi=(await api(previewPath,{cookie:alice,method:'POST',body:{scenario:'number',number:48,settings:{language:'hi',tone:'energetic',voiceProvider:'elevenlabs',voiceDelivery:'expressive',voiceProfile:'haryanvi'}},expected:201})).data;
+ assert.match(haryanvi.script,/इब निकल्या 48/);
+ assert.equal(haryanvi.voice.status,'generated');
+
  await page.locator('#commentary-tone').selectOption('energetic');
  await page.locator('#commentary-test-number').fill('47');
  await page.locator('#commentary-generate').click();
@@ -193,6 +207,21 @@ try{
   await new Promise(resolve=>setTimeout(resolve,80));
  }
  assert.deepEqual(rejectedVoice,{status:'rejected',model:'eleven_v3',httpStatus:429});
+ await api(commentary+'/admin/settings',{cookie:alice,method:'POST',body:{familyFriendly:false,allowSexualReferences:true,innuendoIntensity:4},expected:201});
+ await callNumber(45);
+ let darkEvent;
+ for(let i=0;i<25&&!darkEvent;i++){
+  darkEvent=(await api(commentary,{cookie:alice})).data.events.find(event=>event.afterDark);
+  if(!darkEvent)await new Promise(resolve=>setTimeout(resolve,80));
+ }
+ assert.ok(darkEvent?.audio);
+ assert.match(darkEvent.text,/45/);
+ assert.deepEqual((await liveSettings()).lastAnnouncement.gemini,{status:'after_dark',model:null});
+ await api(commentary+'/admin/settings',{cookie:alice,method:'POST',body:{familyFriendly:true,allowSexualReferences:false},expected:201});
+ assert.ok(!(await api(commentary,{cookie:alice})).data.events.some(event=>event.afterDark));
+ await api(commentary+'/'+darkEvent.seq+'/audio',{cookie:alice,expected:404});
+ console.log('PASS After Dark preview, saved mode, live audio and family mode suppression');
+
  console.log('PASS expressive Hindi preview, live cloud audio, TV fallback and provider rejection diagnostics');
  await page.getByText('Manage paired TVs',{exact:true}).click();page.once('dialog',d=>d.accept());await page.locator('#revoke-tv').click();await tv.waitForURL('**/screen');
  const guestContext=await browser.newContext({ignoreHTTPSErrors:true}),landing=await guestContext.newPage();await landing.goto(origin);await landing.locator('#code').fill(game.joinCode);await landing.locator('#join button').click();await landing.waitForURL('**/join/'+id);

@@ -14,7 +14,7 @@ on the TV to hear the voice. Its local **Narration** switch can silence it.
 1. Open a game and expand **Live AI commentary**. Choose language, tone, audience, accent, and voice. You can preview with **Enable commentary** switched off.
 2. Under **Test commentary**, choose a sample event and click **Generate preview**. A successful request shows the model and a separate **Gemini reaction**. **Scripted fallback** explains why a reaction was unavailable, such as a missing or rejected key, an unavailable model, quota, a timeout, or a filtered response.
 3. Play the sample on your current device. For a cloud sample, use the audio player and **Compare browser voice** to hear the same line with both voices. The browser uses voices installed on the current device, which can differ from the TV's.
-4. For an adults-only game, enable **Allow sexual innuendo (adults only)** and accept the confirmation. Set **Innuendo intensity** to **Light** for subtle wordplay, **Cheeky** for an obvious double meaning, or **Bold** for a clearly suggestive punchline. Pick the same sample event at different levels to compare the reactions. Re-enable **Family friendly** to turn the meter off.
+4. For an adults-only game, enable **Allow sexual innuendo (adults only)** and accept the confirmation. Set **Innuendo intensity** to **Light** for subtle wordplay, **Cheeky** for an obvious double meaning, or **Bold** for a clearly suggestive punchline. Choose **After Dark** for a rotating set of stronger, non-explicit punchlines about the ball, board, or tickets. Pick the same sample event at different levels to compare the reactions. Re-enable **Family friendly** to turn the meter off.
 
 Previews use fictional player and game data with your unsaved settings. They stay in the host console. The server allows up to ten previews per minute per host on each instance. Use **Save commentary** when you’re ready to apply the settings.
 
@@ -77,7 +77,14 @@ committed and never delay the draw. Failed calls fall back to local speech; game
 progress and commentary settings survive server restarts.
 
 Family friendly is on by default, with no sexual references. Existing games start
-at **Light** when adults-only commentary is enabled. All three levels use
-non-explicit wordplay about the game and keep the same Gemini safety filters
-and app text checks. If Gemini filters a reaction, the app plays the scripted
-announcement. Use a properly licensed voice ID for a featured celebrity voice.
+at **Light** when adults-only commentary is enabled. Light, Cheeky, and Bold use Gemini for non-explicit wordplay about the game. If Gemini filters a reaction, the app plays the scripted announcement. After Dark pairs the factual announcement with a prepared punchline in English, Hindi, or Haryanvi when that voice profile is selected. **Generate preview** cycles through the set for the selected event and displays the exact line. After Dark is stored per game. Switching it off stops queued After Dark lines on the TV when it next polls. Use a properly licensed voice ID for a featured celebrity voice.
+
+## Add named announcer voices
+
+Set `COMMENTARY_VOICE_PROFILES` in the API service's Render **Environment** settings or in the Raspberry Pi's `.env`. Supply a JSON array and use a different `id` for each voice. This example adds a Haryanvi announcer.
+
+```json
+[{"id":"haryanvi","label":"Hindi · Haryanvi","language":"hi","dialect":"haryanvi","voiceId":"YOUR_ELEVENLABS_VOICE_ID"}]
+```
+
+Use the voice ID from **My Voices** in ElevenLabs and redeploy. Select **Hindi**, **Cloud voice (ElevenLabs)** and **Hindi · Haryanvi** under **Announcer voice**. Preview a number call and a winner before saving. Each named entry is available only for its configured language. Use `hi` or `en` for `language`. Omit `dialect` for regular Hindi or English phrasing. The Haryanvi dialect uses regional phrasing while sending Hindi to ElevenLabs. The selected voice determines pronunciation and accent.

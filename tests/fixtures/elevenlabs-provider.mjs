@@ -7,7 +7,8 @@ globalThis.fetch=async (url,options)=>{
  if(typeof url!=='string'||!url.startsWith('https://api.elevenlabs.io/v1/text-to-speech/'))return originalFetch(url,options);
  if(options?.headers['xi-api-key']!=='elevenlabs-rehearsal-key')return new Response(null,{status:401});
  const {text,model_id,language_code}=JSON.parse(options.body);
- if(!url.includes('/voice-hi?')||language_code!=='hi')return new Response(null,{status:404});
+ const expectedVoice=text.includes('48')?'voice-haryanvi':'voice-hi';
+ if(!url.includes('/'+expectedVoice+'?')||language_code!=='hi')return new Response(null,{status:404});
  if(model_id!=='eleven_v3'||!text.startsWith('[excited] '))return new Response(null,{status:422});
  if(text.includes('88'))return new Response(null,{status:429});
  if(text.includes('47'))await delay(18_000,undefined,{signal:options.signal});

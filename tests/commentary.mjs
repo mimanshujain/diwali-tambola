@@ -10,7 +10,7 @@ export async function commentaryChecks({base,key,db,browser,stop,start,outputDir
  await req(previewPath,{admin:false,method:'POST',body:sample,expected:401});
  await req(previewPath,{method:'POST',body:{...sample,number:91},expected:400});
  await req(previewPath,{method:'POST',body:{...sample,settings:{familyFriendly:true,allowSexualReferences:true}},expected:400});
- await req(previewPath,{method:'POST',body:{...sample,settings:{innuendoIntensity:4}},expected:400});
+ await req(previewPath,{method:'POST',body:{...sample,settings:{innuendoIntensity:5}},expected:400});
  const disabledPreview=await req(previewPath,{method:'POST',body:sample});
  assert.equal(disabledPreview.gemini.status,'no_key');assert.match(disabledPreview.text,/42/);
  const classicTv=await browser.newPage();
@@ -63,7 +63,7 @@ export async function commentaryChecks({base,key,db,browser,stop,start,outputDir
  assert.equal(await host.locator('#commentary-family').isChecked(),false);
  assert.equal(await meter.inputValue(),'1');
  await meter.press('ArrowRight');await meter.press('ArrowRight');
- assert.equal(await meter.getAttribute('aria-valuetext'),'3 of 3, Bold');
+ assert.equal(await meter.getAttribute('aria-valuetext'),'3 of 4, Bold');
  await host.locator('#commentary-provider').selectOption('elevenlabs');
  await host.locator('#commentary-scenario').selectOption('near-win');
  await host.locator('#commentary-generate').click();
